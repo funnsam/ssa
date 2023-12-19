@@ -16,11 +16,11 @@ use super::delete_instructions::delete;
 pub fn lower(module: &mut Module) {
     module.analysis_stage = AnalysisStage::LoweredToSSA;
     // Function: V: BB: I -> should delete instruction
-    let mut func_dels: Vec<Vec<Vec<bool>>> = Vec::new();
+    let mut func_dels: Vec<Vec<Vec<bool>>> = Vec::with_capacity(module.functions.len());
     for (func_id, func) in (module.functions).iter_mut().enumerate() {
-        func_dels.push(Vec::new());
+        func_dels.push(Vec::with_capacity(func.blocks.len()));
         for (block_id, block) in func.blocks.clone().iter().enumerate() {
-            func_dels[func_id].push(Vec::new());
+            func_dels[func_id].push(Vec::with_capacity(block.instructions.len()));
             let mut last_var_defs = HashMap::new();
             for (instr_id, instr) in block.instructions.iter().enumerate() {
                 func_dels[func_id][block_id].push(false);

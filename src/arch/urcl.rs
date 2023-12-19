@@ -19,6 +19,8 @@ pub const URCL_REG_8: usize = 8;
 /// URCL DEFAULT CALLING CONV:
 /// - r1: return value
 
+pub const URCL_RETURN_REG: usize = URCL_REG_1;
+
 pub enum UrclInstr {
     PhiPlaceholder {
         dst: VReg,
@@ -33,7 +35,7 @@ pub enum UrclInstr {
     Jmp {
         dst: LabelDest,
     },
-    Beq {
+    Bgr {
         src1: VReg,
         dst: LabelDest,
     },
@@ -62,8 +64,8 @@ pub enum UrclAluOp {
     Xor,
     Not,
     Neg,
-    Rsh,
-    Lsh,
+    Bsr,
+    Bsl,
     Ssete,
     Ssetne,
     Ssetl,
@@ -89,8 +91,8 @@ impl From<BinOp> for UrclAluOp {
             BinOp::Le => UrclAluOp::Ssetle,
             BinOp::Gt => UrclAluOp::Ssetg,
             BinOp::Ge => UrclAluOp::Ssetge,
-            BinOp::Shl => UrclAluOp::Lsh,
-            BinOp::Shr => UrclAluOp::Rsh,
+            BinOp::Shl => UrclAluOp::Bsl,
+            BinOp::Shr => UrclAluOp::Bsr,
         }
     }
 }
@@ -119,18 +121,17 @@ impl Display for UrclInstr {
                 src1,
                 src2,
             } => {
-                write!(f, "{} {} {} {}", op, dst, src1, src2)
+                write!(f, "{op} {dst} {src1} {src2}")
             }
-            UrclInstr::Jmp { dst } => write!(f, "jmp {}", dst),
-            UrclInstr::Imm { dst, val } => write!(f, "imm {} {}", dst, val),
-            UrclInstr::Beq { src1, dst } => write!(f, "bgr {} {} 0", dst, src1),
-            UrclInstr::Mov { dst, src } => write!(f, "mov {} {}", dst, src),
-            UrclInstr::Cal { dst } => write!(f, "cal {}", dst),
+            UrclInstr::Jmp { dst } => write!(f, "jmp {dst}"),
+            UrclInstr::Imm { dst, val } => write!(f, "imm {dst} {val}"),
+            UrclInstr::Bgr { src1, dst } => write!(f, "bgr {dst} {src1} 0"),
+            UrclInstr::Mov { dst, src } => write!(f, "mov {dst} {src}"),
+            UrclInstr::Cal { dst } => write!(f, "cal {dst}"),
             UrclInstr::Ret => write!(f, "ret"),
             UrclInstr::PhiPlaceholder { dst, ops } => write!(
                 f,
-                "phi {} {}",
-                dst,
+                "phi {dst} {}",
                 ops.iter()
                     .map(|v| v.to_string())
                     .collect::<Vec<String>>()
@@ -153,8 +154,8 @@ impl Display for UrclAluOp {
             UrclAluOp::Xor => write!(f, "xor"),
             UrclAluOp::Not => write!(f, "not"),
             UrclAluOp::Neg => write!(f, "neg"),
-            UrclAluOp::Rsh => write!(f, "rsh"),
-            UrclAluOp::Lsh => write!(f, "lsh"),
+            UrclAluOp::Bsr => write!(f, "bsr"),
+            UrclAluOp::Bsl => write!(f, "bsl"),
             UrclAluOp::Ssete => write!(f, "ssete"),
             UrclAluOp::Ssetne => write!(f, "ssetne"),
             UrclAluOp::Ssetl => write!(f, "ssetl"),
@@ -191,7 +192,7 @@ impl InstrSelector for UrclSelector {
             Operation::Integer(val) => {
                 gen.push_instr(UrclInstr::Imm { dst, val: *val });
             }
-            Operation::LoadVar(_) | Operation::StoreVar(..) => (), // THESE NEVER GET EXECUTED (removed in algos::lower_to_ssa::lower())
+            Operation::LoadVar(_) | Operation::StoreVar(..) => unreachable!(), // THESE NEVER GET EXECUTED (removed in algos::lower_to_ssa::lower())
             Operation::Phi(vals) => {
                 gen.push_instr(UrclInstr::PhiPlaceholder {
                     dst,
@@ -205,7 +206,7 @@ impl InstrSelector for UrclSelector {
     fn select_terminator(&mut self, gen: &mut VCodeGenerator<Self::Instr>, term: &Terminator) {
         match term {
             Terminator::Branch(val, t, f) => {
-                gen.push_instr(UrclInstr::Beq {
+                gen.push_instr(UrclInstr::Bgr {
                     src1: self.get_vreg(*val),
                     dst: LabelDest::Block(t.0),
                 });
@@ -220,7 +221,7 @@ impl InstrSelector for UrclSelector {
             }
             Terminator::Return(val) => {
                 gen.push_instr(UrclInstr::Mov {
-                    dst: VReg::Real(URCL_REG_1),
+                    dst: VReg::Real(URCL_RETURN_REG),
                     src: self.get_vreg(*val),
                 });
                 gen.push_instr(UrclInstr::Ret);
