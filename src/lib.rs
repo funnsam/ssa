@@ -11,7 +11,7 @@ pub mod vcode;
 mod tests {
     use crate::{
         algos::lower_to_ssa,
-        arch::urcl::UrclSelector,
+        arch::{urcl::UrclSelector, aarch64::Aarch64Selector},
         builder::ModuleBuilder,
         ir::{BinOp, Terminator, Type},
     };
@@ -55,7 +55,7 @@ mod tests {
         builder.switch_to_block(bb_d);
         let ld_x = builder.build_load(x);
         let ld_y = builder.build_load(y);
-        let val = builder.build_binop(BinOp::Add, ld_x, ld_y, Type::Integer(4, true));
+        let val = builder.build_binop(BinOp::Mod, ld_x, ld_y, Type::Integer(4, true));
         builder.build_store(x, val);
         let ld_x = builder.build_load(x);
         builder.set_terminator(Terminator::Branch(ld_x, bb_a, bb_e));
@@ -73,7 +73,7 @@ mod tests {
         let mut module = builder.build();
         lower_to_ssa::lower(&mut module);
         println!("{}", module);
-        let vcode = module.lower_to_vcode::<_, UrclSelector>();
+        let vcode = module.lower_to_vcode::<_, Aarch64Selector>();
         println!("{}", vcode);
     }
 
