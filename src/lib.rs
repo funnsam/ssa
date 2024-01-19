@@ -13,7 +13,7 @@ mod tests {
         algos::lower_to_ssa,
         arch::{urcl::UrclSelector, aarch64::Aarch64Selector},
         builder::ModuleBuilder,
-        ir::{BinOp, Terminator, Type},
+        ir::{BinOp, Terminator, Type}, regalloc::linear_scan::LinearScanRegAlloc,
     };
 
     #[test]
@@ -71,9 +71,9 @@ mod tests {
         builder.print_module();
 
         let mut module = builder.build();
-        lower_to_ssa::lower(&mut module);
+        module.apply_mandatory_transforms();
         println!("{}", module);
-        let vcode = module.lower_to_vcode::<_, Aarch64Selector>();
+        let vcode = module.lower_to_vcode::<_, Aarch64Selector, LinearScanRegAlloc>();
         println!("{}", vcode);
     }
 
@@ -91,7 +91,7 @@ mod tests {
         builder.set_terminator(Terminator::Return(ld_x));
         builder.print_module();
         let mut module = builder.build();
-        lower_to_ssa::lower(&mut module);
+        module.apply_mandatory_transforms();
         println!("{}", module);
     }
 }

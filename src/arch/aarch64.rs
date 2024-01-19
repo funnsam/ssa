@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     ir::{BinOp, Instruction, Operation, Terminator, ValueId},
-    regalloc::VReg,
+    regalloc::{VReg, apply_alloc},
     vcode::{InstrSelector, LabelDest, VCodeGenerator, VCodeInstr},
 };
 
@@ -83,7 +83,6 @@ pub enum Aarch64AluOp {
     Sub,
     Mul,
     Div,
-    ModPlaceholder,
     Lsl,
     Lsr,
     And,
@@ -100,11 +99,29 @@ impl From<BinOp> for Aarch64AluOp {
             BinOp::Sub => Self::Sub,
             BinOp::Mul => Self::Mul,
             BinOp::Div => Self::Div,
-            BinOp::Mod => unreachable!(),
             BinOp::Shl => Self::Lsl,
             BinOp::Shr => Self::Lsr,
             BinOp::And => Self::And,
+            BinOp::Or  => Self::Orr,
+
             _ => todo!()
+        }
+    }
+}
+
+impl Display for Aarch64AluOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Add  => write!(f, "add"),
+            Self::Sub  => write!(f, "sub"),
+            Self::Mul  => write!(f, "mul"),
+            Self::Div  => write!(f, "udiv"),
+            Self::Lsl  => write!(f, "lsl"),
+            Self::Lsr  => write!(f, "lsr"),
+            Self::And  => write!(f, "and"),
+            Self::Orr  => write!(f, "orr"),
+            Self::Eor  => write!(f, "eor"),
+            Self::Udiv => write!(f, "udiv"),
         }
     }
 }
@@ -134,6 +151,52 @@ impl VCodeInstr for Aarch64Instr {
             VReg::Real(AARCH64_REGISTER_X28),
         ]
     }
+
+    fn collect_registers(&self, regalloc: &mut impl crate::regalloc::Regalloc) {
+        match self {
+            Aarch64Instr::AluOp { dst, src1, src2, .. } => {
+                regalloc.add_def(*dst);
+                regalloc.add_use(*src1);
+                regalloc.add_use(*src2);
+            },
+            Aarch64Instr::Msub { dst, src1, src2, src3 } => {
+                regalloc.add_def(*dst);
+                regalloc.add_use(*src1);
+                regalloc.add_use(*src2);
+                regalloc.add_use(*src3);
+            },
+            Aarch64Instr::MovImm { dst, .. } => regalloc.add_def(*dst),
+            Aarch64Instr::Cbnz { src1, .. } => regalloc.add_use(*src1),
+            Aarch64Instr::MovReg { dst, src } => {
+                regalloc.add_def(*dst);
+                regalloc.add_use(*src);
+            },
+            _ => {},
+        }
+    }
+
+    fn apply_allocs(&mut self, allocs: &std::collections::HashMap<VReg, VReg>) {
+        match self {
+            Aarch64Instr::AluOp { dst, src1, src2, .. } => {
+                apply_alloc(dst, allocs);
+                apply_alloc(src1, allocs);
+                apply_alloc(src2, allocs);
+            },
+            Aarch64Instr::Msub { dst, src1, src2, src3 } => {
+                apply_alloc(dst, allocs);
+                apply_alloc(src1, allocs);
+                apply_alloc(src2, allocs);
+                apply_alloc(src3, allocs);
+            },
+            Aarch64Instr::MovImm { dst, .. } => apply_alloc(dst, allocs),
+            Aarch64Instr::Cbnz { src1, .. } => apply_alloc(src1, allocs),
+            Aarch64Instr::MovReg { dst, src } => {
+                apply_alloc(dst, allocs);
+                apply_alloc(src, allocs);
+            },
+            _ => {},
+        }
+    }
 }
 
 impl Display for Aarch64Instr {
@@ -144,27 +207,53 @@ impl Display for Aarch64Instr {
                 dst,
                 src1,
                 src2,
-            } => // match op {
-                // Aarch64AluOp::ModPlaceholder => write!(f, "udiv ip0 {src1} {src2}\nmsub {dst} ip0 {src2} {src1}"),
-                /*_ =>*/ write!(f, "{op} {dst} {src1} {src2}"),
-            // }
+            } => match op {
+                _ => write!(
+                    f,
+                    "{op} {}, {}, {}",
+                    format_vreg(dst),
+                    format_vreg(src1),
+                    format_vreg(src2)
+                ),
+            }
             Aarch64Instr::Msub {
                 dst,
                 src1,
                 src2,
                 src3,
-            } => write!(f, "msub {dst} {src1} {src2} {src3}"),
+            } => write!(
+                f,
+                "msub {}, {}, {}, {}",
+                format_vreg(dst),
+                format_vreg(src1),
+                format_vreg(src2),
+                format_vreg(src3)
+            ),
             Aarch64Instr::B { dst } => write!(f, "b {dst}"),
-            Aarch64Instr::MovImm { dst, val } => write!(f, "mov {dst} {val}"),
-            Aarch64Instr::Cbnz { src1, dst } => write!(f, "cbnz {dst} {src1}"),
-            Aarch64Instr::MovReg { dst, src } => write!(f, "mov {dst} {src}"),
+            Aarch64Instr::MovImm { dst, val } => write!(
+                f,
+                "mov {}, {val}",
+                format_vreg(dst)
+            ),
+            Aarch64Instr::Cbnz { src1, dst } => write!(
+                f,
+                "cbnz {}, {dst}",
+                format_vreg(src1)
+            ),
+            Aarch64Instr::MovReg { dst, src } => write!(
+                f,
+                "mov {}, {}",
+                format_vreg(dst),
+                format_vreg(src)
+            ),
             Aarch64Instr::Cal { dst } => write!(f, "bl {dst}"),
             Aarch64Instr::Ret => write!(f, "ret"),
             Aarch64Instr::PhiPlaceholder { dst, ops } => write!(
                 f,
-                "phi {dst} {}",
+                "// phi {} {}",
+                format_vreg(dst),
                 ops.iter()
-                    .map(|v| v.to_string())
+                    .map(|v| format_vreg(v))
                     .collect::<Vec<String>>()
                     .join(" ")
             ),
@@ -172,21 +261,13 @@ impl Display for Aarch64Instr {
     }
 }
 
-impl Display for Aarch64AluOp {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Add  => write!(f, "add"),
-            Self::Sub  => write!(f, "sub"),
-            Self::Mul  => write!(f, "mul"),
-            Self::Div  => write!(f, "udiv"),
-            Self::Lsl  => write!(f, "lsl"),
-            Self::Lsr  => write!(f, "lsr"),
-            Self::And  => write!(f, "and"),
-            Self::Orr  => write!(f, "orr"),
-            Self::Eor  => write!(f, "eor"),
-            Self::Udiv => write!(f, "udiv"),
-            Self::ModPlaceholder => unreachable!(),
-        }
+fn format_vreg(v: &VReg) -> String {
+    match v {
+        VReg::Virtual(v) => format!("v{v}"),
+        VReg::Real(AARCH64_REGISTER_ZERO) => "xzr".to_string(),
+        VReg::Real(AARCH64_REGISTER_SP) => "sp".to_string(),
+        VReg::Real(r) => format!("x{}", r - 1),
+        VReg::Spilled(s) => format!("s{s}"),
     }
 }
 

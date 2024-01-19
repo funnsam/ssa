@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::{
     ir::{BinOp, Instruction, Operation, Terminator, ValueId},
-    regalloc::VReg,
+    regalloc::{VReg, apply_alloc},
     vcode::{InstrSelector, LabelDest, VCodeGenerator, VCodeInstr},
 };
 
@@ -35,7 +35,7 @@ pub enum UrclInstr {
     Jmp {
         dst: LabelDest,
     },
-    Bgr {
+    Bge {
         src1: VReg,
         dst: LabelDest,
     },
@@ -110,6 +110,61 @@ impl VCodeInstr for UrclInstr {
             VReg::Real(URCL_REG_8),
         ]
     }
+
+    fn collect_registers(&self, regalloc: &mut impl crate::regalloc::Regalloc) {
+        match self {
+            Self::AluOp {
+                dst,
+                src1,
+                src2,
+                ..
+            } => {
+                regalloc.add_def(*dst);
+                regalloc.add_use(*src1);
+                regalloc.add_use(*src2);
+            }
+            Self::Jmp { .. } => (),
+            Self::Bge { src1, .. } => {
+                regalloc.add_use(*src1);
+            }
+            Self::Imm { dst, .. } => {
+                regalloc.add_def(*dst);
+            }
+            Self::Mov { dst, src } => {
+                regalloc.add_def(*dst);
+                regalloc.add_use(*src);
+                regalloc.coalesce_move(*src, *dst);
+            }
+            _ => ()
+        }
+    }
+
+    fn apply_allocs(&mut self, allocs: &std::collections::HashMap<VReg, VReg>) {
+        match self {
+            Self::AluOp {
+                dst,
+                src1,
+                src2,
+                ..
+            } => {
+                apply_alloc(dst, allocs);
+                apply_alloc(src1, allocs);
+                apply_alloc(src2, allocs);
+            }
+            Self::Jmp { .. } => (),
+            Self::Bge { src1, .. } => {
+                apply_alloc(src1, allocs);
+            }
+            Self::Imm { dst, .. } => {
+                apply_alloc(dst, allocs);
+            }
+            Self::Mov { dst, src } => {
+                apply_alloc(dst, allocs);
+                apply_alloc(src, allocs);
+            }
+            _ => ()
+        }
+    }
 }
 
 impl Display for UrclInstr {
@@ -125,7 +180,7 @@ impl Display for UrclInstr {
             }
             UrclInstr::Jmp { dst } => write!(f, "jmp {dst}"),
             UrclInstr::Imm { dst, val } => write!(f, "imm {dst} {val}"),
-            UrclInstr::Bgr { src1, dst } => write!(f, "bgr {dst} {src1} 0"),
+            UrclInstr::Bge { src1, dst } => write!(f, "bge {dst} {src1} 1"),
             UrclInstr::Mov { dst, src } => write!(f, "mov {dst} {src}"),
             UrclInstr::Cal { dst } => write!(f, "cal {dst}"),
             UrclInstr::Ret => write!(f, "ret"),
@@ -206,7 +261,7 @@ impl InstrSelector for UrclSelector {
     fn select_terminator(&mut self, gen: &mut VCodeGenerator<Self::Instr>, term: &Terminator) {
         match term {
             Terminator::Branch(val, t, f) => {
-                gen.push_instr(UrclInstr::Bgr {
+                gen.push_instr(UrclInstr::Bge {
                     src1: self.get_vreg(*val),
                     dst: LabelDest::Block(t.0),
                 });

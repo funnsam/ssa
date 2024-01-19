@@ -1,8 +1,8 @@
 use ssa::{
     algos::lower_to_ssa,
-    arch::urcl::UrclSelector,
+    arch::aarch64::Aarch64Selector,
     builder::ModuleBuilder,
-    ir::{BinOp, Terminator, Type},
+    ir::{BinOp, Terminator, Type}, regalloc::linear_scan::LinearScanRegAlloc,
 };
 
 fn main() {
@@ -26,6 +26,6 @@ fn main() {
     let mut module = builder.build();
     lower_to_ssa::lower(&mut module);
     println!("{}", module);
-    let vcode = module.lower_to_vcode::<_, UrclSelector>();
+    let vcode = module.lower_to_vcode::<_, Aarch64Selector, LinearScanRegAlloc>();
     println!("{}", vcode);
 }
