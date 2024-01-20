@@ -44,8 +44,8 @@ pub const AARCH64_REGISTER_LR  : usize = 31;
 pub const AARCH64_REGISTER_SP  : usize = 32;
 
 pub const AARCH64_CALLEE: &'static [usize] = &[
-    AARCH64_REGISTER_LR,
     AARCH64_REGISTER_FP,
+    AARCH64_REGISTER_LR,
 ];
 
 pub enum Aarch64Instr {
