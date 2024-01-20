@@ -93,6 +93,23 @@ impl ModuleBuilder {
         val
     }
 
+    pub fn build_call(&mut self, func: FunctionId, ops: Vec<ValueId>) -> ValueId {
+        let callee = self.get_func(func);
+        let val = self.push_value(callee.ret_type.clone());
+        let cur_fn = self.get_func_mut(self.current_func.unwrap());
+        for i in ops.iter() {
+            cur_fn.values.get_mut(i.0).unwrap().children.push(val);
+        }
+
+        self.get_block_mut(self.current_block.unwrap())
+            .instructions
+            .push(Instruction {
+                yielded: Some(val),
+                operation: Operation::Call(func, ops),
+            });
+        val
+    }
+
     fn get_func(&self, id: FunctionId) -> &Function {
         &self.module.functions[id.0]
     }
@@ -167,7 +184,7 @@ impl ModuleBuilder {
                 self.get_block_mut(loc1).preds.push(cur_blk);
                 self.get_block_mut(loc2).preds.push(cur_blk);
             }
-            _ => panic!("tried to set terminator to noterm"),
+            Terminator::NoTerm => panic!("tried to set terminator to noterm"),
         }
         self.get_block_mut(self.current_block.unwrap()).terminator = terminator;
     }

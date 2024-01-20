@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    ir::{BinOp, Instruction, Operation, Terminator, ValueId},
+    ir::{BinOp, Instruction, Operation, Terminator, ValueId, Function},
     regalloc::{VReg, apply_alloc},
     vcode::{InstrSelector, LabelDest, VCodeGenerator, VCodeInstr},
 };
@@ -226,7 +226,12 @@ pub struct UrclSelector;
 
 impl InstrSelector for UrclSelector {
     type Instr = UrclInstr;
-    fn select(&mut self, gen: &mut VCodeGenerator<Self::Instr>, instr: &Instruction) {
+    fn select(
+        &mut self,
+        gen: &mut VCodeGenerator<Self::Instr>,
+        instr: &Instruction,
+        _func: &Function
+    ) {
         let dst = if let Some(val) = instr.yielded {
             self.get_vreg(val)
         } else {
@@ -258,7 +263,12 @@ impl InstrSelector for UrclSelector {
         }
     }
 
-    fn select_terminator(&mut self, gen: &mut VCodeGenerator<Self::Instr>, term: &Terminator) {
+    fn select_terminator(
+        &mut self,
+        gen: &mut VCodeGenerator<Self::Instr>,
+        term: &Terminator,
+        _func: &Function
+    ) {
         match term {
             Terminator::Branch(val, t, f) => {
                 gen.push_instr(UrclInstr::Bge {
@@ -283,6 +293,12 @@ impl InstrSelector for UrclSelector {
             }
             _ => todo!(),
         }
+    }
+
+    fn select_prologue(&mut self, gen: &mut VCodeGenerator<Self::Instr>, func: &Function) {
+    }
+
+    fn select_epilogue(&mut self, gen: &mut VCodeGenerator<Self::Instr>, func: &Function) {
     }
 }
 

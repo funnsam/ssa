@@ -80,7 +80,7 @@ impl Regalloc for LinearScanRegAlloc {
                 }
             }
         }
-        println!("{:#?}", ret);
+        // println!("{:#?}", ret);
         ret
     }
 }

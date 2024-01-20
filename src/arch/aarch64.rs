@@ -1,10 +1,13 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::{
-    ir::{BinOp, Instruction, Operation, Terminator, ValueId},
+    ir::{BinOp, Instruction, Operation, Terminator, ValueId, Function},
     regalloc::{VReg, apply_alloc},
-    vcode::{InstrSelector, LabelDest, VCodeGenerator, VCodeInstr},
+    vcode::{InstrSelector, LabelDest, VCode, VCodeGenerator, VCodeInstr, DisplayVCode},
 };
+
+// TODO: save x19-x28 (callee saved)
+// TODO: save x9-x15
 
 pub const AARCH64_REGISTER_ZERO: usize = 0;
 pub const AARCH64_REGISTER_X0  : usize = 1;
@@ -40,6 +43,11 @@ pub const AARCH64_REGISTER_FP  : usize = 30;
 pub const AARCH64_REGISTER_LR  : usize = 31;
 pub const AARCH64_REGISTER_SP  : usize = 32;
 
+pub const AARCH64_CALLEE: &'static [usize] = &[
+    AARCH64_REGISTER_LR,
+    AARCH64_REGISTER_FP,
+];
+
 pub enum Aarch64Instr {
     PhiPlaceholder {
         dst: VReg,
@@ -50,6 +58,12 @@ pub enum Aarch64Instr {
         dst: VReg,
         src1: VReg,
         src2: VReg,
+    },
+    AluImm {
+        op: Aarch64AluOp,
+        dst: VReg,
+        src1: VReg,
+        src2: i64,
     },
     Msub {
         dst: VReg,
@@ -72,10 +86,18 @@ pub enum Aarch64Instr {
         dst: VReg,
         src: VReg,
     },
-    Cal {
+    Bl {
         dst: LabelDest,
     },
     Ret,
+    LoadSp {
+        dst: VReg,
+        offset: i64
+    },
+    StoreSp {
+        src: VReg,
+        offset: i64
+    },
 }
 
 pub enum Aarch64AluOp {
@@ -136,8 +158,8 @@ impl VCodeInstr for Aarch64Instr {
             VReg::Real(AARCH64_REGISTER_X13),
             VReg::Real(AARCH64_REGISTER_X14),
             VReg::Real(AARCH64_REGISTER_X15),
-            // IP0 is a temp used by some operations
-            VReg::Real(AARCH64_REGISTER_IP1),
+            // VReg::Real(AARCH64_REGISTER_IP0),
+            // VReg::Real(AARCH64_REGISTER_IP1),
             VReg::Real(AARCH64_REGISTER_X18),
             VReg::Real(AARCH64_REGISTER_X19),
             VReg::Real(AARCH64_REGISTER_X20),
@@ -159,6 +181,10 @@ impl VCodeInstr for Aarch64Instr {
                 regalloc.add_use(*src1);
                 regalloc.add_use(*src2);
             },
+            Aarch64Instr::AluImm { dst, src1, .. } => {
+                regalloc.add_def(*dst);
+                regalloc.add_use(*src1);
+            },
             Aarch64Instr::Msub { dst, src1, src2, src3 } => {
                 regalloc.add_def(*dst);
                 regalloc.add_use(*src1);
@@ -171,7 +197,18 @@ impl VCodeInstr for Aarch64Instr {
                 regalloc.add_def(*dst);
                 regalloc.add_use(*src);
             },
-            _ => {},
+            Aarch64Instr::LoadSp { dst, .. } => {
+                regalloc.add_def(*dst);
+            },
+            Aarch64Instr::StoreSp { src, .. } => {
+                regalloc.add_use(*src);
+            },
+            Aarch64Instr::B { .. }
+                | Aarch64Instr::Bl { .. }
+                | Aarch64Instr::PhiPlaceholder { .. }
+                | Aarch64Instr::Ret
+            => {},
+            // _ => {},
         }
     }
 
@@ -181,6 +218,10 @@ impl VCodeInstr for Aarch64Instr {
                 apply_alloc(dst, allocs);
                 apply_alloc(src1, allocs);
                 apply_alloc(src2, allocs);
+            },
+            Aarch64Instr::AluImm { dst, src1, .. } => {
+                apply_alloc(dst, allocs);
+                apply_alloc(src1, allocs);
             },
             Aarch64Instr::Msub { dst, src1, src2, src3 } => {
                 apply_alloc(dst, allocs);
@@ -194,13 +235,19 @@ impl VCodeInstr for Aarch64Instr {
                 apply_alloc(dst, allocs);
                 apply_alloc(src, allocs);
             },
-            _ => {},
+            Aarch64Instr::LoadSp { dst, .. } => apply_alloc(dst, allocs),
+            Aarch64Instr::StoreSp { src, .. } => apply_alloc(src, allocs),
+            Aarch64Instr::B { .. }
+                | Aarch64Instr::Bl { .. }
+                | Aarch64Instr::PhiPlaceholder { .. }
+                | Aarch64Instr::Ret
+            => {},
         }
     }
 }
 
-impl Display for Aarch64Instr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl DisplayVCode<Self> for Aarch64Instr {
+    fn fmt_inst(&self, f: &mut std::fmt::Formatter<'_>, vcode: &VCode<Self>) -> std::fmt::Result {
         match self {
             Aarch64Instr::AluOp {
                 op,
@@ -216,6 +263,19 @@ impl Display for Aarch64Instr {
                     format_vreg(src2)
                 ),
             }
+            Aarch64Instr::AluImm {
+                op,
+                dst,
+                src1,
+                src2,
+            } => match op {
+                _ => write!(
+                    f,
+                    "{op} {}, {}, #{src2}",
+                    format_vreg(dst),
+                    format_vreg(src1),
+                ),
+            }
             Aarch64Instr::Msub {
                 dst,
                 src1,
@@ -229,7 +289,7 @@ impl Display for Aarch64Instr {
                 format_vreg(src2),
                 format_vreg(src3)
             ),
-            Aarch64Instr::B { dst } => write!(f, "b {dst}"),
+            Aarch64Instr::B { dst } => write!(f, "b {}", dst.to_string(vcode)),
             Aarch64Instr::MovImm { dst, val } => write!(
                 f,
                 "mov {}, {val}",
@@ -237,8 +297,9 @@ impl Display for Aarch64Instr {
             ),
             Aarch64Instr::Cbnz { src1, dst } => write!(
                 f,
-                "cbnz {}, {dst}",
-                format_vreg(src1)
+                "cbnz {}, {}",
+                format_vreg(src1),
+                dst.to_string(vcode)
             ),
             Aarch64Instr::MovReg { dst, src } => write!(
                 f,
@@ -246,7 +307,7 @@ impl Display for Aarch64Instr {
                 format_vreg(dst),
                 format_vreg(src)
             ),
-            Aarch64Instr::Cal { dst } => write!(f, "bl {dst}"),
+            Aarch64Instr::Bl { dst } => write!(f, "bl {}", dst.to_string(vcode)),
             Aarch64Instr::Ret => write!(f, "ret"),
             Aarch64Instr::PhiPlaceholder { dst, ops } => write!(
                 f,
@@ -256,6 +317,16 @@ impl Display for Aarch64Instr {
                     .map(|v| format_vreg(v))
                     .collect::<Vec<String>>()
                     .join(" ")
+            ),
+            Aarch64Instr::LoadSp { dst: src, offset } => write!(
+                f,
+                "ldr {}, [sp, #{offset}]",
+                format_vreg(src)
+            ),
+            Aarch64Instr::StoreSp { src, offset } => write!(
+                f,
+                "str {}, [sp, #{offset}]",
+                format_vreg(src)
             ),
         }
     }
@@ -272,32 +343,40 @@ fn format_vreg(v: &VReg) -> String {
 }
 
 #[derive(Default)]
-pub struct Aarch64Selector;
+pub struct Aarch64Selector {
+    virtual_map: HashMap<usize, VReg>
+}
 
 impl InstrSelector for Aarch64Selector {
     type Instr = Aarch64Instr;
-    fn select(&mut self, gen: &mut VCodeGenerator<Self::Instr>, instr: &Instruction) {
+    fn select(
+        &mut self,
+        gen: &mut VCodeGenerator<Self::Instr>,
+        instr: &Instruction,
+        func: &Function
+    ) {
         let dst = if let Some(val) = instr.yielded {
-            self.get_vreg(val)
+            self.get_vreg(val, gen)
         } else {
             VReg::Real(AARCH64_REGISTER_ZERO)
         };
 
         match &instr.operation {
             Operation::BinOp(op, lhs, rhs) => {
-                let src1 = self.get_vreg(*lhs);
-                let src2 = self.get_vreg(*rhs);
+                let src1 = self.get_vreg(*lhs, gen);
+                let src2 = self.get_vreg(*rhs, gen);
                 match op {
                     BinOp::Mod => {
+                        let tmp = gen.push_vreg();
                         gen.push_instr(Aarch64Instr::AluOp {
                             op: Aarch64AluOp::Udiv,
-                            dst: VReg::Real(AARCH64_REGISTER_IP0),
+                            dst: tmp,
                             src1,
                             src2,
                         });
                         gen.push_instr(Aarch64Instr::Msub {
                             dst,
-                            src1: VReg::Real(AARCH64_REGISTER_IP0),
+                            src1: tmp,
                             src2,
                             src3: src1
                         });
@@ -311,26 +390,50 @@ impl InstrSelector for Aarch64Selector {
                         });
                     }
                 }
-            }
+            },
             Operation::Integer(val) => {
                 gen.push_instr(Aarch64Instr::MovImm { dst, val: *val });
-            }
+            },
             Operation::LoadVar(_) | Operation::StoreVar(..) => unreachable!(), // THESE NEVER GET EXECUTED (removed in algos::lower_to_ssa::lower())
-            Operation::Phi(vals) => {
-                gen.push_instr(Aarch64Instr::PhiPlaceholder {
+            Operation::Call(func, args) => {
+                // TODO: save x9-x15
+                for (i, a) in args.iter().enumerate() {
+                    if i > 7 {
+                        todo!();
+                    }
+
+                    let src = self.get_vreg(*a, gen);
+                    gen.push_instr(Aarch64Instr::MovReg {
+                        dst: VReg::Real(AARCH64_REGISTER_X0 + i),
+                        src
+                    });
+                }
+
+                gen.push_instr(Aarch64Instr::Bl { dst: LabelDest::Function(func.0) });
+                gen.push_instr(Aarch64Instr::MovReg {
                     dst,
-                    ops: vals.iter().map(|v| self.get_vreg(*v)).collect(),
+                    src: VReg::Real(AARCH64_REGISTER_X0)
                 });
-            }
+            },
+            Operation::Phi(vals) => {
+                let ops = vals.iter().map(|v| self.get_vreg(*v, gen)).collect();
+                gen.push_instr(Aarch64Instr::PhiPlaceholder { dst, ops });
+            },
             _ => todo!(),
         }
     }
 
-    fn select_terminator(&mut self, gen: &mut VCodeGenerator<Self::Instr>, term: &Terminator) {
+    fn select_terminator(
+        &mut self,
+        gen: &mut VCodeGenerator<Self::Instr>,
+        term: &Terminator,
+        func: &Function
+    ) {
         match term {
             Terminator::Branch(val, t, f) => {
+                let src1 = self.get_vreg(*val, gen);
                 gen.push_instr(Aarch64Instr::Cbnz {
-                    src1: self.get_vreg(*val),
+                    src1,
                     dst: LabelDest::Block(t.0),
                 });
                 gen.push_instr(Aarch64Instr::B {
@@ -343,20 +446,60 @@ impl InstrSelector for Aarch64Selector {
                 });
             }
             Terminator::Return(val) => {
+                let src = self.get_vreg(*val, gen);
                 gen.push_instr(Aarch64Instr::MovReg {
                     dst: VReg::Real(AARCH64_REGISTER_X0),
-                    src: self.get_vreg(*val),
+                    src
                 });
-                gen.push_instr(Aarch64Instr::Ret);
+                gen.push_instr(Aarch64Instr::B { dst: LabelDest::Epilogue });
             }
             _ => todo!(),
         }
     }
+
+    fn select_prologue(&mut self, gen: &mut VCodeGenerator<Self::Instr>, _func: &Function) {
+        gen.push_instr(Aarch64Instr::AluImm {
+            op: Aarch64AluOp::Sub,
+            dst:  VReg::Real(AARCH64_REGISTER_SP),
+            src1: VReg::Real(AARCH64_REGISTER_SP),
+            src2: (AARCH64_CALLEE.len() * 16) as i64
+        });
+
+        for (i, r) in AARCH64_CALLEE.iter().enumerate() {
+            gen.push_instr(Aarch64Instr::StoreSp {
+                src: VReg::Real(*r),
+                offset: (i * 16) as i64
+            });
+        }
+
+        gen.push_instr(Aarch64Instr::MovReg {
+            dst: VReg::Real(AARCH64_REGISTER_FP),
+            src: VReg::Real(AARCH64_REGISTER_SP),
+        });
+    }
+
+    fn select_epilogue(&mut self, gen: &mut VCodeGenerator<Self::Instr>, _func: &Function) {
+        for (i, r) in AARCH64_CALLEE.iter().enumerate() {
+            gen.push_instr(Aarch64Instr::LoadSp {
+                dst: VReg::Real(*r),
+                offset: (i * 16) as i64
+            });
+        }
+
+        gen.push_instr(Aarch64Instr::AluImm {
+            op: Aarch64AluOp::Add,
+            dst:  VReg::Real(AARCH64_REGISTER_SP),
+            src1: VReg::Real(AARCH64_REGISTER_SP),
+            src2: (AARCH64_CALLEE.len() * 16) as i64
+        });
+
+        gen.push_instr(Aarch64Instr::Ret);
+    }
 }
 
 impl Aarch64Selector {
-    #[inline]
-    pub fn get_vreg(&self, val: ValueId) -> VReg {
-        VReg::Virtual(val.0)
+    pub fn get_vreg(&mut self, val: ValueId, gen: &mut VCodeGenerator<Aarch64Instr>) -> VReg {
+        // VReg::Virtual(val.0)
+        *self.virtual_map.entry(val.0).or_insert_with(|| gen.push_vreg())
     }
 }

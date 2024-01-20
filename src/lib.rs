@@ -14,6 +14,7 @@ mod tests {
         arch::{urcl::UrclSelector, aarch64::Aarch64Selector},
         builder::ModuleBuilder,
         ir::{BinOp, Terminator, Type}, regalloc::linear_scan::LinearScanRegAlloc,
+        vcode::DisplayVCode
     };
 
     #[test]
@@ -74,7 +75,7 @@ mod tests {
         module.apply_mandatory_transforms();
         println!("{}", module);
         let vcode = module.lower_to_vcode::<_, Aarch64Selector, LinearScanRegAlloc>();
-        println!("{}", vcode);
+        println!("{}", vcode.to_fmt(&vcode));
     }
 
     #[test]

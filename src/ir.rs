@@ -53,14 +53,21 @@ impl Module {
         for func in self.functions.iter() {
             let f = gen.push_function(&func.name, func.linkage, func.args.len());
             gen.switch_to_func(f);
+
+            gen.prologue();
+            selector.select_prologue(&mut gen, func);
+
             for bb in func.blocks.iter() {
                 let b = gen.push_block();
                 gen.switch_to_block(b);
                 for instr in bb.instructions.iter() {
-                    selector.select(&mut gen, instr);
+                    selector.select(&mut gen, instr, func);
                 }
-                selector.select_terminator(&mut gen, &bb.terminator);
+                selector.select_terminator(&mut gen, &bb.terminator, func);
             }
+
+            gen.epilogue();
+            selector.select_epilogue(&mut gen, func);
         }
         let mut v = gen.build();
         let mut regalloc = R::default();
