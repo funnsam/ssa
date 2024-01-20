@@ -6,9 +6,6 @@ use crate::{
     vcode::{InstrSelector, LabelDest, VCode, VCodeGenerator, VCodeInstr, DisplayVCode},
 };
 
-// TODO: save x19-x28 (callee saved)
-// TODO: save x9-x15
-
 pub const AARCH64_REGISTER_ZERO: usize = 0;
 pub const AARCH64_REGISTER_X0  : usize = 1;
 pub const AARCH64_REGISTER_X1  : usize = 2;
@@ -46,6 +43,16 @@ pub const AARCH64_REGISTER_SP  : usize = 32;
 pub const AARCH64_CALLEE: &'static [usize] = &[
     AARCH64_REGISTER_FP,
     AARCH64_REGISTER_LR,
+    AARCH64_REGISTER_X19,
+    AARCH64_REGISTER_X20,
+    AARCH64_REGISTER_X21,
+    AARCH64_REGISTER_X22,
+    AARCH64_REGISTER_X23,
+    AARCH64_REGISTER_X24,
+    AARCH64_REGISTER_X25,
+    AARCH64_REGISTER_X26,
+    AARCH64_REGISTER_X27,
+    AARCH64_REGISTER_X28,
 ];
 
 pub enum Aarch64Instr {
@@ -400,7 +407,8 @@ impl InstrSelector for Aarch64Selector {
             },
             Operation::LoadVar(_) | Operation::StoreVar(..) => unreachable!(), // THESE NEVER GET EXECUTED (removed in algos::lower_to_ssa::lower())
             Operation::Call(func, args) => {
-                // TODO: save x9-x15
+                // TODO: save x0-x7 + x9-x15
+
                 for (i, a) in args.iter().enumerate() {
                     if i > 7 {
                         todo!();
