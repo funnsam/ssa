@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt::Display};
 
 use crate::{
-    ir::{BinOp, Instruction, Operation, Terminator, ValueId, Function},
+    ir::{BinOp, Instruction, Operation, Terminator, ValueId, Function, Linkage},
     regalloc::{VReg, apply_alloc},
     vcode::{InstrSelector, LabelDest, VCode, VCodeGenerator, VCodeInstr, DisplayVCode},
 };
@@ -98,6 +98,7 @@ pub enum Aarch64Instr {
         src: VReg,
         offset: i64
     },
+    Autibsp
 }
 
 pub enum Aarch64AluOp {
@@ -207,6 +208,7 @@ impl VCodeInstr for Aarch64Instr {
                 | Aarch64Instr::Bl { .. }
                 | Aarch64Instr::PhiPlaceholder { .. }
                 | Aarch64Instr::Ret
+                | Aarch64Instr::Autibsp
             => {},
             // _ => {},
         }
@@ -241,6 +243,7 @@ impl VCodeInstr for Aarch64Instr {
                 | Aarch64Instr::Bl { .. }
                 | Aarch64Instr::PhiPlaceholder { .. }
                 | Aarch64Instr::Ret
+                | Aarch64Instr::Autibsp
             => {},
         }
     }
@@ -328,6 +331,7 @@ impl DisplayVCode<Self> for Aarch64Instr {
                 "str {}, [sp, #{offset}]",
                 format_vreg(src)
             ),
+            Aarch64Instr::Autibsp => write!(f, "autibsp"),
         }
     }
 }
@@ -493,6 +497,7 @@ impl InstrSelector for Aarch64Selector {
             src2: (AARCH64_CALLEE.len() * 16) as i64
         });
 
+        gen.push_instr(Aarch64Instr::Autibsp);
         gen.push_instr(Aarch64Instr::Ret);
     }
 }
@@ -501,5 +506,50 @@ impl Aarch64Selector {
     pub fn get_vreg(&mut self, val: ValueId, gen: &mut VCodeGenerator<Aarch64Instr>) -> VReg {
         // VReg::Virtual(val.0)
         *self.virtual_map.entry(val.0).or_insert_with(|| gen.push_vreg())
+    }
+}
+
+#[derive(Default)]
+pub struct Aarch64Formatter;
+
+impl DisplayVCode<Aarch64Instr> for Aarch64Formatter {
+    fn fmt_inst(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        vcode: &VCode<Aarch64Instr>
+    ) -> std::fmt::Result {
+        for func in vcode.functions.iter() {
+            match func.linkage {
+                Linkage::External => {
+                    writeln!(f, ".extern {}", func.name)?;
+                    continue;
+                },
+                Linkage::Public => writeln!(f, ".global {}", func.name)?,
+                Linkage::Private => {}
+            }
+
+            writeln!(f, "{}:", func.name)?;
+            writeln!(f, "  .prologue:")?;
+            for instr in func.prologue.instrs.iter() {
+                write!(f, "    ")?;
+                instr.fmt_inst(f, vcode)?;
+                writeln!(f)?;
+            }
+            for (i, instrs) in func.instrs.iter().enumerate() {
+                writeln!(f, "  .L{}:", i)?;
+                for instr in instrs.instrs.iter() {
+                    write!(f, "    ")?;
+                    instr.fmt_inst(f, vcode)?;
+                    writeln!(f)?;
+                }
+            }
+            writeln!(f, "  .epilogue:")?;
+            for instr in func.epilogue.instrs.iter() {
+                write!(f, "    ")?;
+                instr.fmt_inst(f, vcode)?;
+                writeln!(f)?;
+            }
+        }
+        Ok(())
     }
 }

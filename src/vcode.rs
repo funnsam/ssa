@@ -168,6 +168,15 @@ impl<I: VCodeInstr> VCodeGenerator<I> {
     }
 }
 
+impl<I: VCodeInstr> VCode<I> {
+    pub fn format<F: DisplayVCode<I> + Default>(
+        &self,
+        f: &mut impl std::io::Write
+    ) -> std::io::Result<()> {
+        write!(f, "{}", F::default().to_fmt(self))
+    }
+}
+
 impl<I> DisplayVCode<I> for VCode<I> where I: DisplayVCode<I> + VCodeInstr {
     fn fmt_inst(&self, f: &mut std::fmt::Formatter<'_>, vcode: &VCode<I>) -> std::fmt::Result {
         for func in self.functions.iter().filter(|func| !matches!(func.linkage, Linkage::External)) {

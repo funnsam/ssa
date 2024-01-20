@@ -1,9 +1,7 @@
 use ssa::{
-    algos::lower_to_ssa,
-    arch::aarch64::Aarch64Selector,
+    arch::aarch64::{Aarch64Selector, Aarch64Formatter},
     builder::ModuleBuilder,
     ir::{BinOp, Terminator, Type, Linkage}, regalloc::linear_scan::LinearScanRegAlloc,
-    vcode::DisplayVCode,
 };
 
 fn main() {
@@ -43,5 +41,6 @@ fn main() {
     module.apply_mandatory_transforms();
     eprintln!("{}", module);
     let vcode = module.lower_to_vcode::<_, Aarch64Selector, LinearScanRegAlloc>();
-    println!("{}", vcode.to_fmt(&vcode));
+    vcode.format::<Aarch64Formatter>(&mut std::io::stdout()).unwrap();
+    eprintln!("Execute with `as test.s -c -o test.o; gcc test.o; ./a.out; echo $?; rm test.o`");
 }
