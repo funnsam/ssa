@@ -13,7 +13,8 @@ mod tests {
         algos::lower_to_ssa,
         arch::{urcl::UrclSelector, aarch64::Aarch64Selector},
         builder::ModuleBuilder,
-        ir::{BinOp, Terminator, Type}, regalloc::linear_scan::LinearScanRegAlloc,
+        ir::{BinOp, Terminator, Type},
+        regalloc::linear_scan::LinearScanRegAlloc,
         vcode::DisplayVCode
     };
 
@@ -24,12 +25,12 @@ mod tests {
         let m_fn = builder.push_function("main", Type::Void, vec![], None);
         builder.switch_to_fn(m_fn);
 
-        let entry = builder.push_block("entry");
-        let bb_a = builder.push_block("a");
-        let bb_b = builder.push_block("b");
-        let bb_c = builder.push_block("c");
-        let bb_d = builder.push_block("d");
-        let bb_e = builder.push_block("e");
+        let entry = builder.push_block();
+        let bb_a = builder.push_block();
+        let bb_b = builder.push_block();
+        let bb_c = builder.push_block();
+        let bb_d = builder.push_block();
+        let bb_e = builder.push_block();
 
         builder.switch_to_block(entry);
         builder.set_terminator(Terminator::Jump(bb_a));
@@ -83,7 +84,7 @@ mod tests {
         let mut builder = ModuleBuilder::new("test");
         let f = builder.push_function("main", Type::Void, vec![], None);
         builder.switch_to_fn(f);
-        let entry = builder.push_block("entry");
+        let entry = builder.push_block();
         builder.switch_to_block(entry);
         let x = builder.push_variable("x", Type::Integer(32, true));
         let three = builder.build_integer(3, Type::Integer(32, true));

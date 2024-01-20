@@ -1,7 +1,8 @@
 use ssa::{
     arch::aarch64::{Aarch64Selector, Aarch64Formatter},
     builder::ModuleBuilder,
-    ir::{BinOp, Terminator, Type, Linkage}, regalloc::linear_scan::LinearScanRegAlloc,
+    ir::{BinOp, Terminator, Type, Linkage},
+    regalloc::linear_scan::LinearScanRegAlloc,
 };
 
 fn main() {
@@ -15,7 +16,7 @@ fn main() {
     let main = builder.push_function("main", Type::Integer(32, true), vec![], Some(Linkage::Public));
     builder.switch_to_fn(main);
 
-    let entry = builder.push_block("entry");
+    let entry = builder.push_block();
     builder.switch_to_block(entry);
 
     let a_char = builder.build_integer(b'a' as i64, Type::Integer(32, true));
@@ -23,7 +24,7 @@ fn main() {
     builder.build_call(putchar, vec![a_char]);
     builder.build_call(putchar, vec![lf_char]);
 
-    let exit = builder.push_block("exit");
+    let exit = builder.push_block();
     builder.set_terminator(Terminator::Jump(exit));
     builder.switch_to_block(exit);
 

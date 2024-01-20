@@ -1,9 +1,12 @@
 use std::{
     collections::HashSet,
-    fmt::{Debug, Display},
+    fmt::{Debug, Display}, ops::Deref,
 };
 
-use crate::{vcode::{InstrSelector, VCode, VCodeGenerator, VCodeInstr}, regalloc::Regalloc};
+use crate::{
+    regalloc::Regalloc,
+    vcode::{InstrSelector, VCode, VCodeGenerator, VCodeInstr},
+};
 
 /// `Module` is the struct containing all the functions and info about the
 /// passes run on the SSA.
@@ -24,7 +27,7 @@ pub enum Algo {
     CriticalEdgeSplitting,
     PhiLowering,
     PhiRemoval,
-    ParMoveLowering,
+    LowerParMoves,
 }
 
 impl Module {
@@ -41,33 +44,41 @@ impl Module {
     pub fn apply_mandatory_transforms(&mut self) {
         crate::algos::remove_critical_edges::remove_critical_edges(self);
         crate::algos::lower_to_ssa::lower(self);
+
+        crate::algos::phi_lowering::lower_phis(self);
     }
 
     /// Lowers the module to vcode using the given instruction selector.
     /// The instruction selector may be defined outside of this crate and used,
     /// as long as you implement the `InstrSelector` trait for it and define
     /// registers avaliable for use.
-    pub fn lower_to_vcode<I: VCodeInstr, S: InstrSelector<Instr = I> + Default, R: Regalloc + Default>(&self) -> VCode<I> {
+    pub fn lower_to_vcode<
+        I: VCodeInstr,
+        S: InstrSelector<Instr = I> + Default,
+        R: Regalloc + Default,
+    >(
+        &self,
+    ) -> VCode<I> {
         let mut gen = VCodeGenerator::new();
         let mut selector = S::default();
         for func in self.functions.iter() {
             let f = gen.push_function(&func.name, func.linkage, func.args.len());
             gen.switch_to_func(f);
-
-            gen.prologue();
-            selector.select_prologue(&mut gen, func);
-
             for bb in func.blocks.iter() {
                 let b = gen.push_block();
                 gen.switch_to_block(b);
-                for instr in bb.instructions.iter() {
-                    selector.select(&mut gen, instr, func);
+                if b == 0 {
+                    selector.get_pre_function_instructions(&mut gen);
                 }
-                selector.select_terminator(&mut gen, &bb.terminator, func);
+                for instr in bb.instructions.iter() {
+                    selector.select(&mut gen, instr);
+                }
+                selector.select_terminator(&mut gen, &bb.terminator);
             }
 
-            gen.epilogue();
-            selector.select_epilogue(&mut gen, func);
+            let b = gen.push_block();
+            gen.switch_to_block(b);
+            selector.get_post_function_instructions(&mut gen);
         }
         let mut v = gen.build();
         let mut regalloc = R::default();
@@ -224,11 +235,11 @@ pub enum Type {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BasicBlock {
-    pub(crate) name: String,
     pub(crate) instructions: Vec<Instruction>,
     pub(crate) terminator: Terminator,
     pub(crate) preds: Vec<BlockId>,
     pub(crate) id: usize,
+    pub(crate) par_moves: Vec<(ValueId, ValueId)>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -262,8 +273,8 @@ impl Display for Linkage {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Instruction {
-    pub(crate) yielded: Option<ValueId>,
-    pub(crate) operation: Operation,
+    pub yielded: Option<ValueId>,
+    pub operation: Operation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -274,8 +285,6 @@ pub enum Operation {
     LoadVar(VariableId),
     StoreVar(VariableId, ValueId),
     Phi(Vec<ValueId>),
-
-    ParalellMove(Vec<(ValueId, ValueId)>),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -330,6 +339,34 @@ pub struct VariableId(pub(crate) usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ValueId(pub(crate) usize);
 
+impl Deref for BlockId {
+    type Target = usize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Deref for FunctionId {
+    type Target = usize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Deref for VariableId {
+    type Target = usize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Deref for ValueId {
+    type Target = usize;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 impl Display for Module {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "/* {:?} module {} */", self.algos_run, self.name)?;
@@ -354,7 +391,7 @@ impl Debug for Algo {
             Algo::PhiRemoval => {
                 write!(f, "@phis_removed")
             }
-            Algo::ParMoveLowering => {
+            Algo::LowerParMoves => {
                 write!(f, "@par_moves_lowered")
             }
         }
@@ -403,8 +440,7 @@ impl Display for BasicBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
-            "${} (${}): ; preds = {}",
-            self.name,
+            "${}: ; preds = {}",
             self.id,
             self.preds
                 .iter()
@@ -414,6 +450,18 @@ impl Display for BasicBlock {
         )?;
         for instr in &self.instructions {
             writeln!(f, "    {}", instr)?;
+        }
+        if self.par_moves.len() > 0 {
+            let tmp = self
+                .par_moves
+                .iter()
+                .fold((Vec::new(), Vec::new()), |acc, elem| {
+                    let mut acc = acc;
+                    acc.0.push(format!("{}", elem.0));
+                    acc.1.push(format!("{}", elem.1));
+                    acc
+                });
+            writeln!(f, "    {:?} <- {:?}", tmp.0, tmp.1)?;
         }
         writeln!(f, "    {}", self.terminator)?;
         Ok(())
@@ -479,16 +527,6 @@ impl Display for Operation {
                     .collect::<Vec<String>>()
                     .join(", ")
             )?,
-            Operation::ParalellMove(moves) => {
-                let (a, b) = moves
-                    .iter()
-                    .fold((Vec::new(), Vec::new()), |mut acc, elem| {
-                        acc.0.push(elem.0);
-                        acc.1.push(elem.1);
-                        acc
-                    });
-                write!(f, "{:?} = {:?}", a, b)?;
-            }
         }
         Ok(())
     }

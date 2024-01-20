@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
 use crate::{
-    ir::{BinOp, Instruction, Operation, Terminator, ValueId, Function},
-    regalloc::{VReg, apply_alloc},
+    ir::{BinOp, Instruction, Operation, Terminator, ValueId},
+    regalloc::{apply_alloc, VReg},
     vcode::{InstrSelector, LabelDest, VCodeGenerator, VCodeInstr},
 };
 
@@ -114,10 +114,7 @@ impl VCodeInstr for UrclInstr {
     fn collect_registers(&self, regalloc: &mut impl crate::regalloc::Regalloc) {
         match self {
             Self::AluOp {
-                dst,
-                src1,
-                src2,
-                ..
+                dst, src1, src2, ..
             } => {
                 regalloc.add_def(*dst);
                 regalloc.add_use(*src1);
@@ -135,17 +132,14 @@ impl VCodeInstr for UrclInstr {
                 regalloc.add_use(*src);
                 regalloc.coalesce_move(*src, *dst);
             }
-            _ => ()
+            _ => (),
         }
     }
 
     fn apply_allocs(&mut self, allocs: &std::collections::HashMap<VReg, VReg>) {
         match self {
             Self::AluOp {
-                dst,
-                src1,
-                src2,
-                ..
+                dst, src1, src2, ..
             } => {
                 apply_alloc(dst, allocs);
                 apply_alloc(src1, allocs);
@@ -162,7 +156,7 @@ impl VCodeInstr for UrclInstr {
                 apply_alloc(dst, allocs);
                 apply_alloc(src, allocs);
             }
-            _ => ()
+            _ => (),
         }
     }
 }
@@ -229,8 +223,7 @@ impl InstrSelector for UrclSelector {
     fn select(
         &mut self,
         gen: &mut VCodeGenerator<Self::Instr>,
-        instr: &Instruction,
-        _func: &Function
+        instr: &Instruction
     ) {
         let dst = if let Some(val) = instr.yielded {
             self.get_vreg(val)
@@ -266,8 +259,7 @@ impl InstrSelector for UrclSelector {
     fn select_terminator(
         &mut self,
         gen: &mut VCodeGenerator<Self::Instr>,
-        term: &Terminator,
-        _func: &Function
+        term: &Terminator
     ) {
         match term {
             Terminator::Branch(val, t, f) => {
@@ -295,10 +287,12 @@ impl InstrSelector for UrclSelector {
         }
     }
 
-    fn select_prologue(&mut self, gen: &mut VCodeGenerator<Self::Instr>, func: &Function) {
+    fn get_post_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
+        
     }
 
-    fn select_epilogue(&mut self, gen: &mut VCodeGenerator<Self::Instr>, func: &Function) {
+    fn get_pre_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
+        
     }
 }
 

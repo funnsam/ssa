@@ -363,8 +363,7 @@ impl InstrSelector for Aarch64Selector {
     fn select(
         &mut self,
         gen: &mut VCodeGenerator<Self::Instr>,
-        instr: &Instruction,
-        func: &Function
+        instr: &Instruction
     ) {
         let dst = if let Some(val) = instr.yielded {
             self.get_vreg(val, gen)
@@ -438,8 +437,7 @@ impl InstrSelector for Aarch64Selector {
     fn select_terminator(
         &mut self,
         gen: &mut VCodeGenerator<Self::Instr>,
-        term: &Terminator,
-        func: &Function
+        term: &Terminator
     ) {
         match term {
             Terminator::Branch(val, t, f) => {
@@ -469,7 +467,7 @@ impl InstrSelector for Aarch64Selector {
         }
     }
 
-    fn select_prologue(&mut self, gen: &mut VCodeGenerator<Self::Instr>, _func: &Function) {
+    fn get_pre_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
         gen.push_instr(Aarch64Instr::AluImm {
             op: Aarch64AluOp::Sub,
             dst:  VReg::Real(AARCH64_REGISTER_SP),
@@ -490,7 +488,7 @@ impl InstrSelector for Aarch64Selector {
         });
     }
 
-    fn select_epilogue(&mut self, gen: &mut VCodeGenerator<Self::Instr>, _func: &Function) {
+    fn get_post_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
         for (i, r) in AARCH64_CALLEE.iter().enumerate() {
             gen.push_instr(Aarch64Instr::LoadSp {
                 dst: VReg::Real(*r),
@@ -537,12 +535,6 @@ impl DisplayVCode<Aarch64Instr> for Aarch64Formatter {
             }
 
             writeln!(f, "{}:", func.name)?;
-            writeln!(f, "  .prologue:")?;
-            for instr in func.prologue.instrs.iter() {
-                write!(f, "    ")?;
-                instr.fmt_inst(f, vcode)?;
-                writeln!(f)?;
-            }
             for (i, instrs) in func.instrs.iter().enumerate() {
                 writeln!(f, "  .L{}:", i)?;
                 for instr in instrs.instrs.iter() {
@@ -550,12 +542,6 @@ impl DisplayVCode<Aarch64Instr> for Aarch64Formatter {
                     instr.fmt_inst(f, vcode)?;
                     writeln!(f)?;
                 }
-            }
-            writeln!(f, "  .epilogue:")?;
-            for instr in func.epilogue.instrs.iter() {
-                write!(f, "    ")?;
-                instr.fmt_inst(f, vcode)?;
-                writeln!(f)?;
             }
         }
         Ok(())
