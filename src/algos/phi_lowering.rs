@@ -58,7 +58,6 @@ pub fn lower_phis(module: &mut Module) {
             for m in seq.iter() {
                 block.instructions.push(crate::ir::Instruction { yielded: Some(m.0), operation: Operation::BinOp(crate::ir::BinOp::And, m.1, m.1) });
             }
-            println!("{seq:?}");
         }
     }
 }
