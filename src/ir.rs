@@ -45,7 +45,7 @@ impl Module {
         crate::algos::remove_critical_edges::remove_critical_edges(self);
         crate::algos::lower_to_ssa::lower(self);
 
-        crate::algos::phi_lowering::lower_phis(self);
+        crate::algos::phi_removal::remove_phis(self);
     }
 
     /// Lowers the module to vcode using the given instruction selector.

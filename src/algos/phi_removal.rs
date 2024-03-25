@@ -3,10 +3,10 @@ use crate::{
     ir::{Algo, Module, Operation},
 };
 
-pub fn lower_phis(module: &mut Module) {
+pub fn remove_phis(module: &mut Module) {
     // Modules without critical edge splitting will have program semantics changed if phis are removed
     assert!(module.algos_run.contains(&Algo::CriticalEdgeSplitting));
-    module.algos_run.push(Algo::PhiLowering);
+    module.algos_run.push(Algo::PhiRemoval);
     // Function: V: BB: I -> should delete instruction
     let mut func_dels: Vec<Vec<Vec<bool>>> = Vec::new();
 

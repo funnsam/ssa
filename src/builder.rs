@@ -6,7 +6,7 @@ use crate::ir::{
 };
 
 pub struct ModuleBuilder {
-    module: Module,
+    pub(crate) module: Module,
     current_func: Option<FunctionId>,
     current_block: Option<BlockId>,
 }
@@ -174,7 +174,7 @@ impl ModuleBuilder {
 
     // internal function to init values
     #[inline]
-    fn push_value(&mut self, ty: Type) -> ValueId {
+    pub(crate) fn push_value(&mut self, ty: Type) -> ValueId {
         let owner = self.current_block.unwrap();
         self.get_func_mut(self.current_func.unwrap())
             .values
