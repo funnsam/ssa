@@ -1,15 +1,15 @@
 use crate::ir::Module;
 
-pub fn delete(module: &mut Module, dels: Vec<Vec<Vec<bool>>>) {
-    for (func_id, func) in (module.functions).iter_mut().enumerate() {
-        for (block_id, block) in func.blocks.clone().iter().enumerate() {
-            let mut new_instrs = Vec::new();
-            for (instr_id, instr) in block.instructions.iter().enumerate() {
-                if !dels[func_id][block_id][instr_id] {
-                    new_instrs.push(instr.clone());
+pub fn delete(module: &mut Module, dels: &[Vec<Vec<bool>>]) {
+    for (fi, func) in dels.iter().enumerate() {
+        for (bi, block) in func.iter().enumerate() {
+            let mut deleted = 0;
+            for (i, inst) in block.iter().enumerate() {
+                if *inst {
+                    module.functions[fi].blocks[bi].instructions.remove(i - deleted);
+                    deleted += 1;
                 }
             }
-            func.blocks[block_id].instructions = new_instrs;
         }
     }
 }

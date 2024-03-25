@@ -46,8 +46,7 @@ fn main() {
     builder.switch_to_block(init_bb);
     let one = builder.build_integer(1, INT);
     builder.build_store(x, one);
-    let zero = builder.build_integer(0, INT);
-    builder.build_store(y, zero);
+    builder.build_store(y, one);
     let iter = builder.build_integer(10, INT);
     builder.build_store(cnt, iter);
     builder.set_terminator(Terminator::Jump(loop_bb));
@@ -65,10 +64,13 @@ fn main() {
     builder.set_terminator(Terminator::Branch(nc, loop_bb, end_bb));
 
     builder.switch_to_block(end_bb);
-    builder.set_terminator(Terminator::Return(zero));
+    builder.set_terminator(Terminator::Return(nx));
 
     builder.print_module();
 
-    let vcode = builder.build().lower_to_vcode::<_, IrisSelector, LinearScanRegAlloc>();
+    let mut module = builder.build();
+    module.apply_mandatory_transforms();
+    println!("{module}");
+    let vcode = module.lower_to_vcode::<_, IrisSelector, LinearScanRegAlloc>();
     println!("{}", vcode);
 }

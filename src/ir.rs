@@ -64,11 +64,11 @@ impl Module {
         for func in self.functions.iter() {
             let f = gen.push_function(&func.name, func.linkage, func.args.len());
             gen.switch_to_func(f);
-            
+
             for bb in func.blocks.iter() {
                 let b = gen.push_block();
                 gen.switch_to_block(b);
-                
+
                 for instr in bb.instructions.iter() {
                     selector.select(&mut gen, instr);
                 }

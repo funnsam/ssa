@@ -175,6 +175,13 @@ impl VCodeInstr for IrisInstr {
                 regalloc.add_use(*src);
                 regalloc.coalesce_move(*src, *dst);
             }
+            Self::PhiPlaceholder { dst, ops } => {
+                regalloc.add_def(*dst);
+                for i in ops.iter() {
+                    regalloc.add_use(*i);
+                    regalloc.coalesce_move(*i, *dst);
+                }
+            }
             _ => (),
         }
     }
@@ -198,6 +205,12 @@ impl VCodeInstr for IrisInstr {
             Self::Mov { dst, src } => {
                 apply_alloc(dst, allocs);
                 apply_alloc(src, allocs);
+            }
+            Self::PhiPlaceholder { dst, ops } => {
+                apply_alloc(dst, allocs);
+                for i in ops.iter_mut() {
+                    apply_alloc(i, allocs);
+                }
             }
             _ => (),
         }

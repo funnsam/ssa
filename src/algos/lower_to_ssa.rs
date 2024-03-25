@@ -58,7 +58,7 @@ pub fn lower(module: &mut Module) {
             }
         }
     }
-    delete(module, func_dels);
+    delete(module, &func_dels);
     remove_singleelem_phis(module);
 }
 
@@ -80,7 +80,7 @@ pub fn remove_singleelem_phis(module: &mut Module) {
             }
         }
     }
-    delete(module, dels);
+    delete(module, &dels);
 }
 
 fn find_last_def(bb: &BasicBlock, var: VariableId) -> Option<ValueId> {
