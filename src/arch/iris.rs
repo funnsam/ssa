@@ -44,6 +44,35 @@ pub const IRIS_REG_ARGS: &[usize] = &[
     IRIS_REG_1, IRIS_REG_2, IRIS_REG_3, IRIS_REG_4, IRIS_REG_5, IRIS_REG_6, IRIS_REG_7, IRIS_REG_8,
 ];
 
+pub const IRIS_REGS: &[VReg] = &[
+    VReg::Real(IRIS_REG_1),
+    VReg::Real(IRIS_REG_2),
+    VReg::Real(IRIS_REG_3),
+    VReg::Real(IRIS_REG_4),
+    VReg::Real(IRIS_REG_5),
+    VReg::Real(IRIS_REG_6),
+    // VReg::Real(IRIS_REG_7),
+    // VReg::Real(IRIS_REG_8),
+    // VReg::Real(IRIS_REG_9),
+    // VReg::Real(IRIS_REG_10),
+    // VReg::Real(IRIS_REG_11),
+    // VReg::Real(IRIS_REG_12),
+    // VReg::Real(IRIS_REG_13),
+    // VReg::Real(IRIS_REG_14),
+    // VReg::Real(IRIS_REG_15),
+    // VReg::Real(IRIS_REG_16),
+    // VReg::Real(IRIS_REG_17),
+    // VReg::Real(IRIS_REG_18),
+    // VReg::Real(IRIS_REG_19),
+    // VReg::Real(IRIS_REG_20),
+    // VReg::Real(IRIS_REG_21),
+    // VReg::Real(IRIS_REG_22),
+    // VReg::Real(IRIS_REG_23),
+    // VReg::Real(IRIS_REG_24),
+    // VReg::Real(IRIS_REG_25),
+    // VReg::Real(IRIS_REG_26),
+];
+
 pub enum IrisInstr {
     PhiPlaceholder {
         dst: VReg,
@@ -74,6 +103,12 @@ pub enum IrisInstr {
         dst: LabelDest,
     },
     Ret,
+    HPsh {
+        val: VReg,
+    },
+    HPop {
+        dst: VReg,
+    },
 }
 
 pub enum IrisAluOp {
@@ -122,34 +157,7 @@ impl From<BinOp> for IrisAluOp {
 
 impl VCodeInstr for IrisInstr {
     fn get_usable_regs() -> &'static [VReg] {
-        &[
-            VReg::Real(IRIS_REG_1),
-            VReg::Real(IRIS_REG_2),
-            VReg::Real(IRIS_REG_3),
-            VReg::Real(IRIS_REG_4),
-            VReg::Real(IRIS_REG_5),
-            VReg::Real(IRIS_REG_6),
-            VReg::Real(IRIS_REG_7),
-            VReg::Real(IRIS_REG_8),
-            VReg::Real(IRIS_REG_9),
-            VReg::Real(IRIS_REG_10),
-            VReg::Real(IRIS_REG_11),
-            VReg::Real(IRIS_REG_12),
-            VReg::Real(IRIS_REG_13),
-            VReg::Real(IRIS_REG_14),
-            VReg::Real(IRIS_REG_15),
-            VReg::Real(IRIS_REG_16),
-            VReg::Real(IRIS_REG_17),
-            VReg::Real(IRIS_REG_18),
-            VReg::Real(IRIS_REG_19),
-            VReg::Real(IRIS_REG_20),
-            VReg::Real(IRIS_REG_21),
-            VReg::Real(IRIS_REG_22),
-            VReg::Real(IRIS_REG_23),
-            VReg::Real(IRIS_REG_24),
-            VReg::Real(IRIS_REG_25),
-            VReg::Real(IRIS_REG_26),
-        ]
+        IRIS_REGS
     }
 
     fn collect_registers(&self, regalloc: &mut impl crate::regalloc::Regalloc) {
@@ -161,7 +169,6 @@ impl VCodeInstr for IrisInstr {
                 regalloc.add_use(*src1);
                 regalloc.add_use(*src2);
             }
-            Self::Jmp { .. } => (),
             Self::Beq { cond, .. } => {
                 regalloc.add_use(*cond);
             }
@@ -173,7 +180,13 @@ impl VCodeInstr for IrisInstr {
                 regalloc.add_use(*src);
                 regalloc.coalesce_move(*src, *dst);
             }
-            _ => (),
+            Self::HPsh { val } => {
+                regalloc.add_use(*val);
+            }
+            Self::HPop { dst } => {
+                regalloc.add_def(*dst);
+            }
+            Self::Jmp { .. } | Self::PhiPlaceholder { .. } | Self::Ret | Self::Cal { .. } => {},
         }
     }
 
@@ -186,7 +199,6 @@ impl VCodeInstr for IrisInstr {
                 apply_alloc(src1, allocs);
                 apply_alloc(src2, allocs);
             }
-            Self::Jmp { .. } => (),
             Self::Beq { cond, .. } => {
                 apply_alloc(cond, allocs);
             }
@@ -197,11 +209,18 @@ impl VCodeInstr for IrisInstr {
                 apply_alloc(dst, allocs);
                 apply_alloc(src, allocs);
             }
-            _ => (),
+            Self::HPsh { val } => {
+                apply_alloc(val, allocs);
+            }
+            Self::HPop { dst } => {
+                apply_alloc(dst, allocs);
+            }
+            Self::Jmp { .. } | Self::PhiPlaceholder { .. } | Self::Ret | Self::Cal { .. } => {},
         }
     }
 
     fn apply_mandatory_transforms(vcode: &mut VCode<Self>) {
+        // TODO: spilled stuff
     }
 
     fn emit_assembly<T: std::io::Write>(w: &mut T, vcode: &VCode<Self>) -> std::io::Result<()> {
@@ -232,7 +251,10 @@ impl VCodeInstr for IrisInstr {
 
             writeln!(w, "{}", mangle(vcode, &f, &LabelDest::Function(FunctionId(fi))))?;
             for (li, l) in f.instrs.iter().enumerate() {
-                writeln!(w, "{}", mangle(vcode, &f, &LabelDest::Block(BlockId(li))))?;
+                if li != 0 {
+                    writeln!(w, "{}", mangle(vcode, &f, &LabelDest::Block(BlockId(li - 1))))?;
+                }
+
                 for i in l.instrs.iter() {
                     match i {
                         IrisInstr::Jmp { dst } => writeln!(w, "jmp {}", mangle(vcode, &f, dst))?,
@@ -274,6 +296,8 @@ impl Display for IrisInstr {
                     .collect::<Vec<String>>()
                     .join(" ")
             ),
+            IrisInstr::HPsh { val } => write!(f, "hpsh {val}"),
+            IrisInstr::HPop { dst } => write!(f, "hpop {dst}"),
         }
     }
 }
@@ -337,6 +361,10 @@ impl InstrSelector for IrisSelector {
             }
             Operation::Call(f, args) => {
                 // TODO: save regs
+                for r in IRIS_REGS.iter() {
+                    gen.push_instr(IrisInstr::HPsh { val: *r });
+                }
+
                 for (dst, src) in parallel_move(
                     &mut IRIS_REG_ARGS
                         .iter()
@@ -348,13 +376,19 @@ impl InstrSelector for IrisSelector {
                     gen.push_instr(IrisInstr::Mov { dst, src });
                 }
 
-                // gen.push_instr(IrisInstr::ParMovePlaceholder {
-                //     moves: args.iter().map(|a| self.get_vreg(*a)).zip(IRIS_REG_ARGS.iter().map(|a| VReg::Real(*a))).collect(),
-                // });
-
                 gen.push_instr(IrisInstr::Cal {
                     dst: LabelDest::Function(*f),
                 });
+
+                // TODO: preserve return value
+                gen.push_instr(IrisInstr::Mov {
+                    dst: self.get_vreg(instr.yielded.unwrap()),
+                    src: VReg::Real(IRIS_REG_1)
+                });
+
+                for r in IRIS_REGS.iter().rev() {
+                    gen.push_instr(IrisInstr::HPop { dst: *r });
+                }
             }
         }
     }
@@ -382,13 +416,25 @@ impl InstrSelector for IrisSelector {
                 });
                 gen.push_instr(IrisInstr::Ret);
             }
-            _ => todo!(),
+            Terminator::NoTerm => {}
+        }
+    }
+
+    fn get_pre_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
+        for (dst, src) in parallel_move(
+            &mut gen
+            .args
+            .iter()
+            .map(|a| self.get_vreg(*a))
+            .zip(IRIS_REG_ARGS.iter().map(|a| VReg::Real(*a)))
+            .collect(),
+            &mut |_, _| gen.push_vreg(),
+        ) {
+            gen.push_instr(IrisInstr::Mov { dst, src });
         }
     }
 
     fn get_post_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {}
-
-    fn get_pre_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {}
 }
 
 impl IrisSelector {

@@ -63,8 +63,13 @@ impl Module {
         let mut gen = VCodeGenerator::new();
         let mut selector = S::default();
         for func in self.functions.iter() {
-            let f = gen.push_function(&func.name, func.linkage, func.args.len());
+            let args = (0..func.args.len()).map(|a| ValueId(a)).collect();
+            let f = gen.push_function(&func.name, func.linkage, args);
             gen.switch_to_func(f);
+
+            let init = gen.push_block();
+            gen.switch_to_block(init);
+            selector.get_pre_function_instructions(&mut gen);
 
             for bb in func.blocks.iter() {
                 let b = gen.push_block();
@@ -75,6 +80,7 @@ impl Module {
                 }
                 selector.select_terminator(&mut gen, &bb.terminator);
             }
+
             selector.get_post_function_instructions(&mut gen);
         }
         let mut v = gen.build();

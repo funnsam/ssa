@@ -50,6 +50,8 @@ pub struct VCodeGenerator<I: VCodeInstr> {
     current_func: Option<usize>,
     current_block: Option<usize>,
     vreg_count: usize,
+
+    pub args: Vec<crate::ir::ValueId>,
 }
 
 impl<I: VCodeInstr> Default for VCodeGenerator<I> {
@@ -65,6 +67,8 @@ impl<I: VCodeInstr> VCodeGenerator<I> {
             current_func: None,
             current_block: None,
             vreg_count: 0,
+
+            args: vec![],
         }
     }
     pub fn push_vreg(&mut self) -> VReg {
@@ -92,13 +96,14 @@ impl<I: VCodeInstr> VCodeGenerator<I> {
         func.instrs.push(LabelledInstructions { instrs: vec![] });
         func.instrs.len() - 1
     }
-    pub fn push_function(&mut self, name: &str, linkage: Linkage, arg_count: usize) -> usize {
+    pub fn push_function(&mut self, name: &str, linkage: Linkage, args: Vec<crate::ir::ValueId>) -> usize {
         self.vcode.functions.push(VCodeFunction {
             name: name.to_string(),
             instrs: vec![],
             linkage,
-            arg_count,
+            arg_count: args.len(),
         });
+        self.args = args;
         self.vcode.functions.len() - 1
     }
     pub fn switch_to_func(&mut self, id: usize) {
