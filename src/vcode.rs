@@ -13,10 +13,14 @@ pub trait InstrSelector {
     fn get_post_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>);
 }
 
-pub trait VCodeInstr {
+pub trait VCodeInstr where Self: Sized {
     fn get_usable_regs() -> &'static [VReg];
     fn collect_registers(&self, regalloc: &mut impl Regalloc);
     fn apply_allocs(&mut self, allocs: &HashMap<VReg, VReg>);
+
+    fn apply_mandatory_transforms(vcode: &mut VCode<Self>);
+    #[must_use]
+    fn emit_assembly<T: std::io::Write>(w: &mut T, vcode: &VCode<Self>) -> std::io::Result<()>;
 }
 
 pub struct VCodeFunction<I: VCodeInstr> {
@@ -105,6 +109,13 @@ impl<I: VCodeInstr> VCodeGenerator<I> {
     }
     pub fn build(self) -> VCode<I> {
         self.vcode
+    }
+}
+
+impl<I: VCodeInstr> VCode<I> {
+    #[must_use]
+    pub fn emit_assembly<W: std::io::Write>(&self, w: &mut W) -> std::io::Result<()> {
+        I::emit_assembly(w, self)
     }
 }
 

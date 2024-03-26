@@ -27,6 +27,8 @@ pub trait Regalloc {
     fn next_instr(&mut self);
     fn coalesce_move(&mut self, from: VReg, to: VReg);
     fn alloc_regs<I: VCodeInstr>(&self) -> HashMap<VReg, VReg>;
+
+    fn reset(&mut self);
 }
 
 pub fn apply_alloc(reg: &mut VReg, allocs: &HashMap<VReg, VReg>) {

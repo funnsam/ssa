@@ -36,27 +36,19 @@ pub fn remove_phis(module: &mut Module) {
 
     for (_, func) in module.functions.iter_mut().enumerate() {
         for (bi, block) in func.blocks.iter_mut().enumerate() {
-            let pcopy = &mut block.par_moves;
-            let mut seq = Vec::with_capacity(pcopy.len());
-            while pcopy.iter().find(|(b, a)| a != b).is_some() {
-                if let Some((i, (b, a))) = pcopy.iter().enumerate().find(|(_, (b, _))| pcopy.iter().find(|(_, b2)| b2 == b).is_none()) {
-                    seq.push((*b, *a));
-                    pcopy.remove(i);
-                } else {
-                    let (i, (b, a)) = pcopy.iter().enumerate().find(|(_, (b, a))| a != b).unwrap();
-                    func.values.push(crate::ir::Value {
-                        ty: func.values[a.0].ty.clone(),
-                        children: vec![],
-                        owner: crate::ir::BlockId(bi),
-                    });
-                    let ap = crate::ir::ValueId(func.values.len() - 1);
-                    seq.push((ap, *a));
-                    pcopy[i] = (*b, ap);
-                }
-            }
+            for m in super::par_move::parallel_move(&mut block.par_moves, &mut |a, _| {
+                func.values.push(crate::ir::Value {
+                    ty: func.values[a.0].ty.clone(),
+                    children: vec![],
+                    owner: crate::ir::BlockId(bi),
+                });
 
-            for m in seq.iter() {
-                block.instructions.push(crate::ir::Instruction { yielded: Some(m.0), operation: Operation::BinOp(crate::ir::BinOp::And, m.1, m.1) });
+                crate::ir::ValueId(func.values.len() - 1)
+            }) {
+                block.instructions.push(crate::ir::Instruction {
+                    yielded: Some(m.0),
+                    operation: Operation::BinOp(crate::ir::BinOp::And, m.1, m.1),
+                });
             }
         }
     }

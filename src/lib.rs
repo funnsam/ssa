@@ -33,8 +33,18 @@ mod tests {
         let x = builder.push_value(Type::Integer(32, false));
         let y = builder.push_value(Type::Integer(32, false));
 
-        builder.module.functions[0].blocks[1].instructions.push(crate::ir::Instruction { yielded: Some(x), operation: crate::ir::Operation::Phi(vec![one, y]) });
-        builder.module.functions[0].blocks[1].instructions.push(crate::ir::Instruction { yielded: Some(y), operation: crate::ir::Operation::Phi(vec![zero, x]) });
+        builder.module.functions[0].blocks[1]
+            .instructions
+            .push(crate::ir::Instruction {
+                yielded: Some(x),
+                operation: crate::ir::Operation::Phi(vec![one, y]),
+            });
+        builder.module.functions[0].blocks[1]
+            .instructions
+            .push(crate::ir::Instruction {
+                yielded: Some(y),
+                operation: crate::ir::Operation::Phi(vec![zero, x]),
+            });
         builder.set_terminator(Terminator::Jump(b));
 
         builder.print_module();

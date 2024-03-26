@@ -1,7 +1,7 @@
 use ssa::{
     arch::iris::IrisSelector,
     builder::ModuleBuilder,
-    ir::{BinOp, Terminator, Type},
+    ir::*,
     regalloc::linear_scan::LinearScanRegAlloc,
 };
 
@@ -10,7 +10,9 @@ fn main() {
 
     let mut builder = ModuleBuilder::new("fib");
 
-    let (fib, args) = builder.push_function("fib", Type::Void, vec![("nth".to_string(), INT)], None);
+    let (print, _) = builder.push_function("print_num", Type::Void, vec![("num".to_string(), INT)], Some(Linkage::External));
+    let (fib, args) =
+        builder.push_function("fib", Type::Void, vec![("nth".to_string(), INT)], None);
     builder.switch_to_fn(fib);
 
     // LIGHT:
@@ -53,6 +55,7 @@ fn main() {
     builder.switch_to_block(loop_bb);
     let xv = builder.build_load(x);
     let yv = builder.build_load(y);
+    builder.build_call(print, vec![yv]);
     let nx = builder.build_binop(BinOp::Add, xv, yv, INT);
     builder.build_store(x, nx);
     let ny = builder.build_binop(BinOp::Sub, nx, yv, INT);
@@ -65,11 +68,12 @@ fn main() {
     builder.switch_to_block(end_bb);
     builder.set_terminator(Terminator::Return(nx));
 
-    let (m_fn, _) = builder.push_function("main", INT, vec![], Some(ssa::ir::Linkage::Public));
+    let (m_fn, _) = builder.push_function("main", INT, vec![], Some(Linkage::Public));
     builder.switch_to_fn(m_fn);
     let bb = builder.push_block();
     builder.switch_to_block(bb);
-    let ret = builder.build_call(fib, vec![]);
+    let ten = builder.build_integer(10, INT);
+    let ret = builder.build_call(fib, vec![ten]);
     builder.set_terminator(Terminator::Return(ret));
 
     builder.print_module();
@@ -78,6 +82,8 @@ fn main() {
     module.apply_mandatory_transforms();
     println!("{module}");
 
-    let vcode = module.lower_to_vcode::<_, IrisSelector, LinearScanRegAlloc>();
-    println!("{}", vcode);
+    let vcode = module
+        .lower_to_vcode::<_, IrisSelector, LinearScanRegAlloc>()
+        .emit_assembly(&mut std::io::stdout())
+        .unwrap();
 }

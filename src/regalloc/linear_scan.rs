@@ -84,6 +84,11 @@ impl Regalloc for LinearScanRegAlloc {
         }
         ret
     }
+
+    fn reset(&mut self) {
+        self.registers.clear();
+        self.live_count = 0;
+    }
 }
 
 impl LinearScanRegAlloc {

@@ -1,7 +1,7 @@
 use ssa::{
+    algos::opt::*,
     builder::ModuleBuilder,
     ir::{BinOp, Terminator, Type},
-    algos::opt::*,
 };
 
 fn main() {

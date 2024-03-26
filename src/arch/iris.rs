@@ -6,9 +6,10 @@
 use std::fmt::Display;
 
 use crate::{
-    ir::{BinOp, Instruction, Operation, Terminator, ValueId},
+    algos::par_move::parallel_move,
+    ir::*,
     regalloc::{apply_alloc, VReg},
-    vcode::{InstrSelector, LabelDest, VCodeGenerator, VCodeInstr},
+    vcode::*,
 };
 
 pub const IRIS_REG_ZR: usize = 0;
@@ -39,6 +40,9 @@ pub const IRIS_REG_24: usize = 24;
 pub const IRIS_REG_25: usize = 25;
 pub const IRIS_REG_26: usize = 26;
 
+pub const IRIS_REG_ARGS: &[usize] = &[
+    IRIS_REG_1, IRIS_REG_2, IRIS_REG_3, IRIS_REG_4, IRIS_REG_5, IRIS_REG_6, IRIS_REG_7, IRIS_REG_8,
+];
 
 pub enum IrisInstr {
     PhiPlaceholder {
@@ -55,7 +59,7 @@ pub enum IrisInstr {
         dst: LabelDest,
     },
     Beq {
-        src1: VReg,
+        cond: VReg,
         dst: LabelDest,
     },
     Imm {
@@ -158,8 +162,8 @@ impl VCodeInstr for IrisInstr {
                 regalloc.add_use(*src2);
             }
             Self::Jmp { .. } => (),
-            Self::Beq { src1, .. } => {
-                regalloc.add_use(*src1);
+            Self::Beq { cond, .. } => {
+                regalloc.add_use(*cond);
             }
             Self::Imm { dst, .. } => {
                 regalloc.add_def(*dst);
@@ -168,13 +172,6 @@ impl VCodeInstr for IrisInstr {
                 regalloc.add_def(*dst);
                 regalloc.add_use(*src);
                 regalloc.coalesce_move(*src, *dst);
-            }
-            Self::PhiPlaceholder { dst, ops } => {
-                regalloc.add_def(*dst);
-                for i in ops.iter() {
-                    regalloc.add_use(*i);
-                    regalloc.coalesce_move(*i, *dst);
-                }
             }
             _ => (),
         }
@@ -190,8 +187,8 @@ impl VCodeInstr for IrisInstr {
                 apply_alloc(src2, allocs);
             }
             Self::Jmp { .. } => (),
-            Self::Beq { src1, .. } => {
-                apply_alloc(src1, allocs);
+            Self::Beq { cond, .. } => {
+                apply_alloc(cond, allocs);
             }
             Self::Imm { dst, .. } => {
                 apply_alloc(dst, allocs);
@@ -200,14 +197,54 @@ impl VCodeInstr for IrisInstr {
                 apply_alloc(dst, allocs);
                 apply_alloc(src, allocs);
             }
-            Self::PhiPlaceholder { dst, ops } => {
-                apply_alloc(dst, allocs);
-                for i in ops.iter_mut() {
-                    apply_alloc(i, allocs);
-                }
-            }
             _ => (),
         }
+    }
+
+    fn apply_mandatory_transforms(vcode: &mut VCode<Self>) {
+    }
+
+    fn emit_assembly<T: std::io::Write>(w: &mut T, vcode: &VCode<Self>) -> std::io::Result<()> {
+        fn mangle<I: VCodeInstr>(vcode: &VCode<I>, f: &VCodeFunction<I>, l: &LabelDest) -> String {
+            fn mangle_string(s: &str) -> String {
+                use std::hash::*;
+                let mut h = DefaultHasher::new();
+                s.hash(&mut h);
+                format!("{s}_{:16x}", h.finish())
+            }
+
+            match l {
+                LabelDest::Block(li) => mangle_string(&format!(".__fn_{}{}_L{}", f.name, f.arg_count, li.0)),
+                LabelDest::Function(fi) => match vcode.functions[fi.0].linkage {
+                    Linkage::Private => format!(".{}", mangle_string(&vcode.functions[fi.0].name)),
+                    _ => format!(".{}", vcode.functions[fi.0].name.clone()),
+                },
+            }
+        }
+
+        writeln!(w, "cal .main")?;
+        writeln!(w, "hlt")?;
+
+        for (fi, f) in vcode.functions.iter().enumerate() {
+            if matches!(f.linkage, Linkage::External) {
+                continue;
+            }
+
+            writeln!(w, "{}", mangle(vcode, &f, &LabelDest::Function(FunctionId(fi))))?;
+            for (li, l) in f.instrs.iter().enumerate() {
+                writeln!(w, "{}", mangle(vcode, &f, &LabelDest::Block(BlockId(li))))?;
+                for i in l.instrs.iter() {
+                    match i {
+                        IrisInstr::Jmp { dst } => writeln!(w, "jmp {}", mangle(vcode, &f, dst))?,
+                        IrisInstr::Beq { cond: src1, dst } => writeln!(w, "bnz {} {}", mangle(vcode, &f, dst), src1)?,
+                        IrisInstr::Cal { dst } => writeln!(w, "cal {}", mangle(vcode, &f, dst))?,
+                        _ => writeln!(w, "{i}")?,
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -220,13 +257,13 @@ impl Display for IrisInstr {
                 src1,
                 src2,
             } => {
-                write!(f, "{} {} {} {}", op, dst, src1, src2)
+                write!(f, "{op} {dst} {src1} {src2}")
             }
-            IrisInstr::Jmp { dst } => write!(f, "jmp {}", dst),
-            IrisInstr::Imm { dst, val } => write!(f, "imm {} {}", dst, val),
-            IrisInstr::Beq { src1, dst } => write!(f, "bnz {} {}", dst, src1),
-            IrisInstr::Mov { dst, src } => write!(f, "mov {} {}", dst, src),
-            IrisInstr::Cal { dst } => write!(f, "cal {}", dst),
+            IrisInstr::Jmp { dst } => write!(f, "jmp {dst}"),
+            IrisInstr::Imm { dst, val } => write!(f, "imm {dst} {val}"),
+            IrisInstr::Beq { cond, dst } => write!(f, "bnz {dst} {cond}"),
+            IrisInstr::Mov { dst, src } => write!(f, "mov {dst} {src}"),
+            IrisInstr::Cal { dst } => write!(f, "cal {dst}"),
             IrisInstr::Ret => write!(f, "ret"),
             IrisInstr::PhiPlaceholder { dst, ops } => write!(
                 f,
@@ -272,7 +309,9 @@ pub struct IrisSelector;
 impl InstrSelector for IrisSelector {
     type Instr = IrisInstr;
     fn select(&mut self, gen: &mut VCodeGenerator<Self::Instr>, instr: &Instruction) {
-        let dst = instr.yielded.map_or(VReg::Real(IRIS_REG_ZR), |val| self.get_vreg(val));
+        let dst = instr
+            .yielded
+            .map_or(VReg::Real(IRIS_REG_ZR), |val| self.get_vreg(val));
 
         match &instr.operation {
             Operation::BinOp(op, lhs, rhs) => {
@@ -298,9 +337,20 @@ impl InstrSelector for IrisSelector {
             }
             Operation::Call(f, args) => {
                 // TODO: save regs
-                for i in args.iter() {
-                    todo!()
+                for (dst, src) in parallel_move(
+                    &mut IRIS_REG_ARGS
+                        .iter()
+                        .map(|a| VReg::Real(*a))
+                        .zip(args.iter().map(|a| self.get_vreg(*a)))
+                        .collect(),
+                    &mut |_, _| gen.push_vreg(),
+                ) {
+                    gen.push_instr(IrisInstr::Mov { dst, src });
                 }
+
+                // gen.push_instr(IrisInstr::ParMovePlaceholder {
+                //     moves: args.iter().map(|a| self.get_vreg(*a)).zip(IRIS_REG_ARGS.iter().map(|a| VReg::Real(*a))).collect(),
+                // });
 
                 gen.push_instr(IrisInstr::Cal {
                     dst: LabelDest::Function(*f),
@@ -313,7 +363,7 @@ impl InstrSelector for IrisSelector {
         match term {
             Terminator::Branch(val, t, f) => {
                 gen.push_instr(IrisInstr::Beq {
-                    src1: self.get_vreg(*val),
+                    cond: self.get_vreg(*val),
                     dst: LabelDest::Block(*t),
                 });
                 gen.push_instr(IrisInstr::Jmp {
@@ -336,11 +386,9 @@ impl InstrSelector for IrisSelector {
         }
     }
 
-    fn get_post_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
-    }
+    fn get_post_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {}
 
-    fn get_pre_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
-    }
+    fn get_pre_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {}
 }
 
 impl IrisSelector {

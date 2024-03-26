@@ -3,7 +3,7 @@ use std::fmt::Display;
 use crate::{
     ir::{BinOp, Instruction, Operation, Terminator, ValueId},
     regalloc::{apply_alloc, VReg},
-    vcode::{InstrSelector, LabelDest, VCodeGenerator, VCodeInstr},
+    vcode::*,
 };
 
 pub const URCL_REG_ZR: usize = 0;
@@ -157,6 +157,13 @@ impl VCodeInstr for UrclInstr {
             _ => (),
         }
     }
+
+    fn apply_mandatory_transforms(vcode: &mut VCode<Self>) {
+    }
+
+    fn emit_assembly<T: std::io::Write>(w: &mut T, vcode: &VCode<Self>) -> std::io::Result<()> {
+        todo!();
+    }
 }
 
 impl Display for UrclInstr {
@@ -278,13 +285,9 @@ impl InstrSelector for UrclSelector {
         }
     }
 
-    fn get_post_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
-        
-    }
+    fn get_post_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {}
 
-    fn get_pre_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
-        
-    }
+    fn get_pre_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {}
 }
 
 impl UrclSelector {

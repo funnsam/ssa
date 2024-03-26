@@ -1,6 +1,7 @@
 use std::{
     collections::HashSet,
-    fmt::{Debug, Display}, ops::Deref,
+    fmt::{Debug, Display},
+    ops::Deref,
 };
 
 use crate::{
@@ -78,21 +79,23 @@ impl Module {
         }
         let mut v = gen.build();
         let mut regalloc = R::default();
-        for func in &v.functions {
+        for func in v.functions.iter_mut() {
             for block in &func.instrs {
                 for instr in &block.instrs {
                     instr.collect_registers(&mut regalloc);
                     regalloc.next_instr();
                 }
             }
-        }
-        let allocs = regalloc.alloc_regs::<I>();
-        for func in v.functions.iter_mut() {
+
+            let allocs = regalloc.alloc_regs::<I>();
+
             for block in func.instrs.iter_mut() {
                 for instr in block.instrs.iter_mut() {
                     instr.apply_allocs(&allocs);
                 }
             }
+
+            regalloc.reset();
         }
 
         v
@@ -131,16 +134,19 @@ impl Function {
             });
         }
 
-        (Self {
-            name: name.to_string(),
-            ret_type,
-            args,
-            blocks: vec![],
-            linkage,
-            variables,
-            id,
-            values,
-        }, (0..arg_len).map(|a| ValueId(a)).collect())
+        (
+            Self {
+                name: name.to_string(),
+                ret_type,
+                args,
+                blocks: vec![],
+                linkage,
+                variables,
+                id,
+                values,
+            },
+            (0..arg_len).map(|a| ValueId(a)).collect(),
+        )
     }
 
     pub(crate) fn push_block(&mut self, block: BasicBlock) {
