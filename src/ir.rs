@@ -120,8 +120,18 @@ impl Function {
         linkage: Linkage,
         variables: Vec<Variable>,
         id: usize,
-    ) -> Self {
-        Self {
+    ) -> (Self, Vec<ValueId>) {
+        let mut values = Vec::new();
+        let arg_len = args.len();
+        for i in args.iter() {
+            values.push(Value {
+                ty: i.1.clone(),
+                children: vec![],
+                owner: BlockId(0),
+            });
+        }
+
+        (Self {
             name: name.to_string(),
             ret_type,
             args,
@@ -129,8 +139,8 @@ impl Function {
             linkage,
             variables,
             id,
-            values: vec![],
-        }
+            values,
+        }, (0..arg_len).map(|a| ValueId(a)).collect())
     }
 
     pub(crate) fn push_block(&mut self, block: BasicBlock) {
@@ -301,6 +311,29 @@ pub enum BinOp {
     Le,
     Gt,
     Ge,
+}
+
+impl BinOp {
+    pub(crate) fn operate(&self, a: i64, b: i64) -> Option<i64> {
+        match self {
+            Self::Add => Some(a.wrapping_add(b)),
+            Self::Sub => Some(a.wrapping_sub(b)),
+            Self::Mul => Some(a.wrapping_mul(b)),
+            Self::Div => a.checked_div(b),
+            Self::Mod => a.checked_rem(b),
+            Self::And => Some(a & b),
+            Self::Or => Some(a | b),
+            Self::Xor => Some(a ^ b),
+            Self::Shl => Some(a << b),
+            Self::Shr => Some(a >> b),
+            Self::Eq => Some((a == b) as _),
+            Self::Ne => Some((a != b) as _),
+            Self::Lt => Some((a < b) as _),
+            Self::Le => Some((a <= b) as _),
+            Self::Gt => Some((a > b) as _),
+            Self::Ge => Some((a >= b) as _),
+        }
+    }
 }
 
 impl Display for BinOp {

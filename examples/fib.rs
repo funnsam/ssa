@@ -6,20 +6,22 @@ use ssa::{
 };
 
 fn main() {
+    const INT: Type = Type::Integer(16, false);
+
     let mut builder = ModuleBuilder::new("fib");
 
-    let m_fn = builder.push_function("main", Type::Void, vec![], None);
-    builder.switch_to_fn(m_fn);
+    let (fib, args) = builder.push_function("fib", Type::Void, vec![("nth".to_string(), INT)], None);
+    builder.switch_to_fn(fib);
 
     // LIGHT:
-    // Init:
+    // fib(%nth):
+    //   Init:
     //     %one = 1
     //     store #x %one
     //     %zero = 0
     //     store #y %zero
-    //     %nth = 10
     //     store #cnt %nth
-    // Loop:
+    //   Loop:
     //     %x = load #x
     //     %y = load #y
     //     %nx = %x + %y
@@ -30,10 +32,8 @@ fn main() {
     //     %ncnt = %cnt - 1
     //     store #cnt %ncnt
     //     branch %ncnt $Loop $End
-    // End:
+    //   End:
     //     return
-
-    const INT: Type = Type::Integer(16, false);
 
     let init_bb = builder.push_block();
     let loop_bb = builder.push_block();
@@ -47,8 +47,7 @@ fn main() {
     let one = builder.build_integer(1, INT);
     builder.build_store(x, one);
     builder.build_store(y, one);
-    let iter = builder.build_integer(10, INT);
-    builder.build_store(cnt, iter);
+    builder.build_store(cnt, args[0]);
     builder.set_terminator(Terminator::Jump(loop_bb));
 
     builder.switch_to_block(loop_bb);
@@ -66,11 +65,19 @@ fn main() {
     builder.switch_to_block(end_bb);
     builder.set_terminator(Terminator::Return(nx));
 
+    let (m_fn, _) = builder.push_function("main", INT, vec![], Some(ssa::ir::Linkage::Public));
+    builder.switch_to_fn(m_fn);
+    let bb = builder.push_block();
+    builder.switch_to_block(bb);
+    let ret = builder.build_call(fib, vec![]);
+    builder.set_terminator(Terminator::Return(ret));
+
     builder.print_module();
 
     let mut module = builder.build();
     module.apply_mandatory_transforms();
     println!("{module}");
+
     let vcode = module.lower_to_vcode::<_, IrisSelector, LinearScanRegAlloc>();
     println!("{}", vcode);
 }

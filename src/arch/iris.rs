@@ -1,6 +1,6 @@
 //! # Iris default calling convention:
 //! - `R1`: return value
-//! - `R2` - `R8`: arguments
+//! - `R1` - `R8`: arguments / caller save
 //! - `R9` - `R25`: scratch register / caller save
 
 use std::fmt::Display;
@@ -38,9 +38,6 @@ pub const IRIS_REG_23: usize = 23;
 pub const IRIS_REG_24: usize = 24;
 pub const IRIS_REG_25: usize = 25;
 pub const IRIS_REG_26: usize = 26;
-pub const IRIS_REG_27: usize = 27;
-pub const IRIS_REG_28: usize = 28;
-pub const IRIS_REG_29: usize = 29;
 
 
 pub enum IrisInstr {
@@ -148,9 +145,6 @@ impl VCodeInstr for IrisInstr {
             VReg::Real(IRIS_REG_24),
             VReg::Real(IRIS_REG_25),
             VReg::Real(IRIS_REG_26),
-            VReg::Real(IRIS_REG_27),
-            VReg::Real(IRIS_REG_28),
-            VReg::Real(IRIS_REG_29),
         ]
     }
 
@@ -278,11 +272,7 @@ pub struct IrisSelector;
 impl InstrSelector for IrisSelector {
     type Instr = IrisInstr;
     fn select(&mut self, gen: &mut VCodeGenerator<Self::Instr>, instr: &Instruction) {
-        let dst = if let Some(val) = instr.yielded {
-            self.get_vreg(val)
-        } else {
-            VReg::Real(IRIS_REG_ZR)
-        };
+        let dst = instr.yielded.map_or(VReg::Real(IRIS_REG_ZR), |val| self.get_vreg(val));
 
         match &instr.operation {
             Operation::BinOp(op, lhs, rhs) => {
@@ -298,14 +288,24 @@ impl InstrSelector for IrisSelector {
             Operation::Integer(val) => {
                 gen.push_instr(IrisInstr::Imm { dst, val: *val });
             }
-            Operation::LoadVar(_) | Operation::StoreVar(..) => (), // THESE NEVER GET EXECUTED (removed in algos::lower_to_ssa::lower())
+            Operation::LoadVar(..) | Operation::StoreVar(..) => unreachable!(),
+            // THESE NEVER GET EXECUTED (removed in algos::lower_to_ssa::lower())
             Operation::Phi(vals) => {
                 gen.push_instr(IrisInstr::PhiPlaceholder {
                     dst,
                     ops: vals.iter().map(|v| self.get_vreg(*v)).collect(),
                 });
             }
-            _ => todo!(),
+            Operation::Call(f, args) => {
+                // TODO: save regs
+                for i in args.iter() {
+                    todo!()
+                }
+
+                gen.push_instr(IrisInstr::Cal {
+                    dst: LabelDest::Function(*f),
+                });
+            }
         }
     }
 
@@ -314,15 +314,15 @@ impl InstrSelector for IrisSelector {
             Terminator::Branch(val, t, f) => {
                 gen.push_instr(IrisInstr::Beq {
                     src1: self.get_vreg(*val),
-                    dst: LabelDest::Block(t.0),
+                    dst: LabelDest::Block(*t),
                 });
                 gen.push_instr(IrisInstr::Jmp {
-                    dst: LabelDest::Block(f.0),
+                    dst: LabelDest::Block(*f),
                 });
             }
             Terminator::Jump(l) => {
                 gen.push_instr(IrisInstr::Jmp {
-                    dst: LabelDest::Block(l.0),
+                    dst: LabelDest::Block(*l),
                 });
             }
             Terminator::Return(val) => {
@@ -337,11 +337,9 @@ impl InstrSelector for IrisSelector {
     }
 
     fn get_post_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
-        
     }
 
     fn get_pre_function_instructions(&mut self, gen: &mut VCodeGenerator<Self::Instr>) {
-        
     }
 }
 

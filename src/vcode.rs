@@ -32,9 +32,9 @@ pub struct LabelledInstructions<I: VCodeInstr> {
 
 pub enum LabelDest {
     // usize: index of the func in the module
-    Function(usize),
+    Function(crate::ir::FunctionId),
     // usize: index of the block in the function
-    Block(usize),
+    Block(crate::ir::BlockId),
 }
 
 pub struct VCode<I: VCodeInstr> {
@@ -135,8 +135,8 @@ impl<I: Display + VCodeInstr> Display for LabelledInstructions<I> {
 impl Display for LabelDest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LabelDest::Function(id) => write!(f, ".L{}", id),
-            LabelDest::Block(id) => write!(f, ".L{}", id),
+            LabelDest::Function(id) => write!(f, "F{}", id.0),
+            LabelDest::Block(id) => write!(f, ".L{}", id.0),
         }
     }
 }

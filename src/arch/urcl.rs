@@ -256,15 +256,15 @@ impl InstrSelector for UrclSelector {
             Terminator::Branch(val, t, f) => {
                 gen.push_instr(UrclInstr::Beq {
                     src1: self.get_vreg(*val),
-                    dst: LabelDest::Block(t.0),
+                    dst: LabelDest::Block(*t),
                 });
                 gen.push_instr(UrclInstr::Jmp {
-                    dst: LabelDest::Block(f.0),
+                    dst: LabelDest::Block(*f),
                 });
             }
             Terminator::Jump(l) => {
                 gen.push_instr(UrclInstr::Jmp {
-                    dst: LabelDest::Block(l.0),
+                    dst: LabelDest::Block(*l),
                 });
             }
             Terminator::Return(val) => {

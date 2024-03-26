@@ -18,27 +18,7 @@ mod tests {
     fn par_copy() {
         let mut builder = ModuleBuilder::new("par_copy");
 
-        // $a:
-        //     %2 = (some value)
-        //     store #x %2
-        //     store #y %2
-        //     jmp $b
-        // $b:
-        //     %0 = load #x
-        //     %1 = load #y
-        //     store #x %1
-        //     store #y %0
-        //     jmp $b
-        // -↓-------------------
-        // $a:
-        //     %2 = 0
-        //     jmp $b
-        // $b:
-        //     %0 = phi %2 %1
-        //     %1 = phi %2 %0
-        //     jmp $b
-
-        let m_fn = builder.push_function("main", Type::Void, vec![], None);
+        let (m_fn, _) = builder.push_function("main", Type::Void, vec![], None);
         builder.switch_to_fn(m_fn);
 
         let a = builder.push_block();
@@ -66,7 +46,7 @@ mod tests {
     #[test]
     fn test_var_renaming() {
         let mut builder = ModuleBuilder::new("test");
-        let f = builder.push_function("main", Type::Void, vec![], None);
+        let (f, _) = builder.push_function("main", Type::Void, vec![], None);
         builder.switch_to_fn(f);
         let entry = builder.push_block();
         builder.switch_to_block(entry);

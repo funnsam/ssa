@@ -38,16 +38,17 @@ impl ModuleBuilder {
         ret_type: Type,
         args: Vec<(String, Type)>,
         linkage: Option<Linkage>,
-    ) -> FunctionId {
-        self.module.functions.push(Function::new(
+    ) -> (FunctionId, Vec<ValueId>) {
+        let (f, a) = Function::new(
             name,
             ret_type,
             args,
             linkage.unwrap_or(Linkage::Private),
             vec![],
             self.module.functions.len(),
-        ));
-        FunctionId(self.module.functions.len() - 1)
+        );
+        self.module.functions.push(f);
+        (FunctionId(self.module.functions.len() - 1), a)
     }
 
     pub fn push_block(&mut self) -> BlockId {
@@ -156,6 +157,16 @@ impl ModuleBuilder {
         val
     }
 
+    pub fn build_call(&mut self, func: FunctionId, args: Vec<ValueId>) -> ValueId {
+        let val = self.push_value(self.get_func(func).ret_type.clone());
+        let block = self.get_block_mut(self.current_block.unwrap());
+        block.instructions.push(Instruction {
+            yielded: Some(val),
+            operation: Operation::Call(func, args),
+        });
+        val
+    }
+
     pub fn set_terminator(&mut self, terminator: Terminator) {
         let cur_blk = self.current_block.unwrap();
         match terminator {
@@ -167,7 +178,7 @@ impl ModuleBuilder {
                 self.get_block_mut(loc1).preds.push(cur_blk);
                 self.get_block_mut(loc2).preds.push(cur_blk);
             }
-            _ => panic!("tried to set terminator to noterm"),
+            Terminator::NoTerm => panic!("tried to set terminator to noterm"),
         }
         self.get_block_mut(self.current_block.unwrap()).terminator = terminator;
     }

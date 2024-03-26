@@ -8,7 +8,7 @@ use ssa::{
 
 fn main() {
     let mut builder = ModuleBuilder::new("test");
-    let func = builder.push_function("main", Type::Integer(32, true), vec![], None);
+    let (func, _) = builder.push_function("main", Type::Integer(32, true), vec![], None);
     builder.switch_to_fn(func);
 
     let entry = builder.push_block();

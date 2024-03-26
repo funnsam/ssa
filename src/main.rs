@@ -2,7 +2,7 @@ use ssa::{builder::ModuleBuilder, ir::{Type, Terminator, BinOp}};
 
 fn main() {
     let mut builder = ModuleBuilder::new("test");
-    let main_fn = builder.push_function("main", Type::Void, vec![], None);
+    let (main_fn, _) = builder.push_function("main", Type::Void, vec![], None);
     builder.switch_to_fn(main_fn);
     let bb = builder.push_block();
     builder.switch_to_block(bb);
