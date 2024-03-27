@@ -82,8 +82,7 @@ fn main() {
     module.apply_mandatory_transforms();
     println!("{module}");
 
-    let vcode = module
-        .lower_to_vcode::<_, IrisSelector, LinearScanRegAlloc>()
-        .emit_assembly(&mut std::io::stdout())
-        .unwrap();
+    let mut vcode = module.lower_to_vcode::<_, IrisSelector, LinearScanRegAlloc>();
+    vcode.apply_mandatory_transforms();
+    vcode.emit_assembly(&mut std::io::stdout()).unwrap();
 }

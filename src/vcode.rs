@@ -34,6 +34,7 @@ pub struct LabelledInstructions<I: VCodeInstr> {
     pub instrs: Vec<I>,
 }
 
+#[derive(Clone)]
 pub enum LabelDest {
     // usize: index of the func in the module
     Function(crate::ir::FunctionId),
@@ -118,6 +119,10 @@ impl<I: VCodeInstr> VCodeGenerator<I> {
 }
 
 impl<I: VCodeInstr> VCode<I> {
+    pub fn apply_mandatory_transforms(&mut self) {
+        I::apply_mandatory_transforms(self)
+    }
+
     #[must_use]
     pub fn emit_assembly<W: std::io::Write>(&self, w: &mut W) -> std::io::Result<()> {
         I::emit_assembly(w, self)

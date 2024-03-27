@@ -73,6 +73,7 @@ pub const IRIS_REGS: &[VReg] = &[
     // VReg::Real(IRIS_REG_26),
 ];
 
+#[derive(Clone)]
 pub enum IrisInstr {
     PhiPlaceholder {
         dst: VReg,
@@ -111,6 +112,7 @@ pub enum IrisInstr {
     },
 }
 
+#[derive(Clone)]
 pub enum IrisAluOp {
     Add,
     Sub,
@@ -221,6 +223,19 @@ impl VCodeInstr for IrisInstr {
 
     fn apply_mandatory_transforms(vcode: &mut VCode<Self>) {
         // TODO: spilled stuff
+        for f in vcode.functions.iter_mut() {
+            for b in f.instrs.iter_mut() {
+                let b_instrs = b.instrs.clone();
+
+                b.instrs.clear();
+
+                for i in b_instrs.into_iter() {
+                    match i {
+                        _ => b.instrs.push(i),
+                    }
+                }
+            }
+        }
     }
 
     fn emit_assembly<T: std::io::Write>(w: &mut T, vcode: &VCode<Self>) -> std::io::Result<()> {
@@ -243,6 +258,7 @@ impl VCodeInstr for IrisInstr {
 
         writeln!(w, "cal .main")?;
         writeln!(w, "hlt")?;
+        writeln!(w)?;
 
         for (fi, f) in vcode.functions.iter().enumerate() {
             if matches!(f.linkage, Linkage::External) {
@@ -264,6 +280,8 @@ impl VCodeInstr for IrisInstr {
                     }
                 }
             }
+
+            writeln!(w)?;
         }
 
         Ok(())
